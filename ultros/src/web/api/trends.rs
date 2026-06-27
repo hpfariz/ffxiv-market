@@ -43,10 +43,17 @@ pub async fn get_trends(
 
     let world_id = match selector {
         AnySelector::World(id) => id,
-        // TODO: Implement Data Center aggregation.
-        // This is computationally expensive to do on-the-fly. Consider pre-aggregating or
-        // caching DC trends in the background worker.
-        _ => return Err(WebError::BadRequest),
+        // DC/Region aggregation is expensive to do on-the-fly. Return an empty
+        // response rather than a 400 — callers should resolve to a specific
+        // world before calling this endpoint.
+        _ => {
+            return Ok(Json(TrendsData {
+                items: vec![],
+                high_velocity: vec![],
+                rising_price: vec![],
+                falling_price: vec![],
+            }));
+        }
     };
 
     // V2 path: ?window= supplied → return a flat sorted list under

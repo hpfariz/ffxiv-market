@@ -6,7 +6,7 @@ use chrono::{Duration, NaiveDateTime, TimeDelta, Utc};
 use icondata as i;
 use leptos::prelude::*;
 use linregress::{FormulaRegressionBuilder, RegressionDataBuilder};
-use log::{error, info};
+use log::{info, warn};
 use ultros_api_types::{SaleHistory, world_helper::AnySelector};
 
 use crate::i18n::*;
@@ -172,7 +172,9 @@ impl SalesWindow {
             let data = RegressionDataBuilder::new()
                 .build_from([("X", unit_prices_f64), ("Y", dates)])
                 .inspect_err(|e| {
-                    error!("{e:?}");
+                    // Warn (not error) — expected for items with uniform prices
+                    // or very sparse sale history where regression is meaningless.
+                    warn!("{e:?}");
                 })
                 .ok()?;
             let model = FormulaRegressionBuilder::new()
@@ -180,7 +182,7 @@ impl SalesWindow {
                 .data_columns("X", ["Y"])
                 .fit()
                 .inspect_err(|e| {
-                    error!("{e:?}");
+                    warn!("{e:?}");
                 })
                 .ok()?;
 

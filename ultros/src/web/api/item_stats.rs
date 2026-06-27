@@ -32,9 +32,18 @@ pub(crate) async fn get_item_stats(
         .ok_or(WebError::NotFound)?;
     let world_id = match AnySelector::from(&world) {
         AnySelector::World(id) => id,
-        // Item stats are per-world; reject DC/Region selectors to keep the
-        // semantics tight. The chart they're paired with is also per-world.
-        _ => return Err(WebError::BadRequest),
+        // Item stats are per-world; for DC/Region selectors we can't aggregate
+        // meaningfully, so return an empty response rather than a 400 — the
+        // ConfidenceBadge renders nothing for an empty variant list, which is
+        // the correct UX (no chip) rather than a network error.
+        _ => {
+            return Ok(Json(ItemStatsResponse {
+                world_id: 0,
+                item_id,
+                variants: vec![],
+            })
+            .into_response());
+        }
     };
 
     // Ask CH for both quality variants in one round trip. Missing variants
