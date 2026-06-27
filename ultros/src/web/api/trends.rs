@@ -20,7 +20,7 @@ pub struct TrendsQuery {
     pub window: Option<u16>,
     /// `1` / `true` bypasses the cross-cutting `ResaleQualityFilter` so
     /// suspicious rows surface with a chip. Default false.
-    pub show_suspicious: Option<bool>,
+    pub show_suspicious: Option<String>,
 }
 
 #[instrument(skip(analyzer, world_cache))]
@@ -57,7 +57,10 @@ pub async fn get_trends(
             7 | 30 | 90 => raw_window,
             _ => 30,
         };
-        let include_suspicious = query.show_suspicious.unwrap_or(false);
+        let include_suspicious = match query.show_suspicious.as_deref() {
+            Some("true") | Some("1") => true,
+            _ => false,
+        };
         let items = analyzer
             .get_trends_v2(world_id, window_days, include_suspicious)
             .await

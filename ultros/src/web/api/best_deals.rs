@@ -18,7 +18,7 @@ pub(crate) struct BestDealsQuery {
     /// suspicious rows (Unusable / high-launder) appear with a chip.
     /// Default false — these are the rows the Flip Finder used to surface
     /// gil-trader laundering on (e.g. Copper Wristlets 3 → 18.9M).
-    pub(crate) show_suspicious: Option<bool>,
+    pub(crate) show_suspicious: Option<String>,
     /// Cap on returned rows. Default 50, clamped to [1, 200].
     pub(crate) limit: Option<u32>,
 }
@@ -76,12 +76,17 @@ pub(crate) async fn get_best_deals(
         _ => None,
     };
 
+    let include_suspicious = match query.show_suspicious.as_deref() {
+        Some("true") | Some("1") => true,
+        _ => false,
+    };
+
     let options = ResaleOptions {
         minimum_profit: query.min_profit,
         filter_world: None,
         filter_datacenter: None,
         filter_sale,
-        include_suspicious: query.show_suspicious.unwrap_or(false),
+        include_suspicious,
     };
     let limit = query.limit.unwrap_or(50).clamp(1, 200) as usize;
 
