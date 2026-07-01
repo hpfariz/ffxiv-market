@@ -19,7 +19,7 @@ static STATIC_PAGES: LazyLock<Vec<SearchResult>> = LazyLock::new(|| {
             score: 100.0,
             title: "Flip Finder".to_string(),
             result_type: "Tool".to_string(),
-            url: "/analyzer".to_string(),
+            url: "/market/flip-finder".to_string(),
             icon_id: None,
             category: Some("Market Analysis".to_string()),
         },
@@ -27,7 +27,7 @@ static STATIC_PAGES: LazyLock<Vec<SearchResult>> = LazyLock::new(|| {
             score: 100.0,
             title: "Recipe Analyzer".to_string(),
             result_type: "Tool".to_string(),
-            url: "/recipe-analyzer".to_string(),
+            url: "/market/recipe-analyzer".to_string(),
             icon_id: None,
             category: Some("Crafting".to_string()),
         },
@@ -35,7 +35,7 @@ static STATIC_PAGES: LazyLock<Vec<SearchResult>> = LazyLock::new(|| {
             score: 100.0,
             title: "Leve Analyzer".to_string(),
             result_type: "Tool".to_string(),
-            url: "/leve-analyzer".to_string(),
+            url: "/market/leve-analyzer".to_string(),
             icon_id: None,
             category: Some("Leveling".to_string()),
         },
@@ -43,7 +43,7 @@ static STATIC_PAGES: LazyLock<Vec<SearchResult>> = LazyLock::new(|| {
             score: 100.0,
             title: "Currency Exchange".to_string(),
             result_type: "Tool".to_string(),
-            url: "/currency-exchange".to_string(),
+            url: "/market/currency-exchange".to_string(),
             icon_id: None,
             category: Some("Currencies".to_string()),
         },
@@ -51,7 +51,7 @@ static STATIC_PAGES: LazyLock<Vec<SearchResult>> = LazyLock::new(|| {
             score: 100.0,
             title: "My Lists".to_string(),
             result_type: "Page".to_string(),
-            url: "/list".to_string(),
+            url: "/market/list".to_string(),
             icon_id: None,
             category: Some("Personal".to_string()),
         },
@@ -59,7 +59,7 @@ static STATIC_PAGES: LazyLock<Vec<SearchResult>> = LazyLock::new(|| {
             score: 100.0,
             title: "Retainers".to_string(),
             result_type: "Page".to_string(),
-            url: "/retainers".to_string(),
+            url: "/market/retainers".to_string(),
             icon_id: None,
             category: Some("Personal".to_string()),
         },
@@ -67,7 +67,7 @@ static STATIC_PAGES: LazyLock<Vec<SearchResult>> = LazyLock::new(|| {
             score: 100.0,
             title: "Settings".to_string(),
             result_type: "Page".to_string(),
-            url: "/settings".to_string(),
+            url: "/market/settings".to_string(),
             icon_id: None,
             category: Some("System".to_string()),
         },
@@ -75,7 +75,7 @@ static STATIC_PAGES: LazyLock<Vec<SearchResult>> = LazyLock::new(|| {
             score: 100.0,
             title: "Help".to_string(),
             result_type: "Page".to_string(),
-            url: "/help".to_string(),
+            url: "/market/help".to_string(),
             icon_id: None,
             category: Some("System".to_string()),
         },
@@ -83,7 +83,7 @@ static STATIC_PAGES: LazyLock<Vec<SearchResult>> = LazyLock::new(|| {
             score: 100.0,
             title: "Flip Finder Help".to_string(),
             result_type: "Help".to_string(),
-            url: "/help/flip-finder".to_string(),
+            url: "/market/help/flip-finder".to_string(),
             icon_id: None,
             category: Some("Market Analysis".to_string()),
         },
@@ -91,7 +91,7 @@ static STATIC_PAGES: LazyLock<Vec<SearchResult>> = LazyLock::new(|| {
             score: 100.0,
             title: "Recipe Analyzer Help".to_string(),
             result_type: "Help".to_string(),
-            url: "/help/recipe-analyzer".to_string(),
+            url: "/market/help/recipe-analyzer".to_string(),
             icon_id: None,
             category: Some("Crafting".to_string()),
         },
@@ -99,7 +99,7 @@ static STATIC_PAGES: LazyLock<Vec<SearchResult>> = LazyLock::new(|| {
             score: 100.0,
             title: "Venture Analyzer Help".to_string(),
             result_type: "Help".to_string(),
-            url: "/help/venture-analyzer".to_string(),
+            url: "/market/help/venture-analyzer".to_string(),
             icon_id: None,
             category: Some("Retainers".to_string()),
         },
@@ -107,7 +107,7 @@ static STATIC_PAGES: LazyLock<Vec<SearchResult>> = LazyLock::new(|| {
             score: 100.0,
             title: "History".to_string(),
             result_type: "Page".to_string(),
-            url: "/history".to_string(),
+            url: "/market/history".to_string(),
             icon_id: None,
             category: Some("Personal".to_string()),
         },
@@ -115,7 +115,7 @@ static STATIC_PAGES: LazyLock<Vec<SearchResult>> = LazyLock::new(|| {
             score: 100.0,
             title: "Alerts".to_string(),
             result_type: "Page".to_string(),
-            url: "/alerts".to_string(),
+            url: "/market/alerts".to_string(),
             icon_id: None,
             category: Some("Personal".to_string()),
         },
@@ -129,6 +129,13 @@ fn get_static_pages() -> &'static [SearchResult] {
 #[component]
 pub fn SearchBox() -> impl IntoView {
     let i18n = use_i18n();
+    let is_cleaned_up = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let is_cleaned_up = is_cleaned_up.clone();
+        on_cleanup(move || {
+            is_cleaned_up.store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+    }
     let text_input = NodeRef::<Input>::new();
     let (search, set_search) = signal(String::new());
     let navigate = use_navigate();
@@ -168,13 +175,19 @@ pub fn SearchBox() -> impl IntoView {
     });
 
     // Debounced search effect with cancellation via serial search_id
+    let is_cleaned_up_effect = is_cleaned_up.clone();
     Effect::new(move |_| {
         let s = search.get();
         set_search_id.update(|n| *n += 1);
         let current_id = search_id.get_untracked();
 
+        let is_cleaned_up_effect = is_cleaned_up_effect.clone();
         spawn_local(async move {
             TimeoutFuture::new(300).await;
+
+            if is_cleaned_up_effect.load(std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
 
             if search_id.get_untracked() != current_id {
                 return;
@@ -245,9 +258,14 @@ pub fn SearchBox() -> impl IntoView {
         set_search(event_target_value(&ev));
     };
     let focus_in = move |_| set_active(true);
+    let is_cleaned_up_focus = is_cleaned_up.clone();
     let focus_out = move |_| {
+        let is_cleaned_up_focus = is_cleaned_up_focus.clone();
         spawn_local(async move {
             TimeoutFuture::new(250).await;
+            if is_cleaned_up_focus.load(std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
             set_active(false);
         })
     };

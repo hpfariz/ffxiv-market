@@ -67,7 +67,7 @@ pub fn ListingsTable(
                                         </td>
                                         <td>
                                             <A href=format!(
-                                                "/retainers/listings/{}",
+                                                "/market/retainers/listings/{}",
                                                 retainer.id,
                                             )>{retainer.name.clone()}</A>
                                         </td>

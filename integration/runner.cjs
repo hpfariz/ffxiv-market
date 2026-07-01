@@ -70,6 +70,10 @@ const DEFAULT_CONSOLE_ALLOW = [
   "favicon",
   "ERR_BLOCKED_BY_CLIENT", // ad/tracker blockers
   "net::ERR_ABORTED",       // navigation aborts during fast clicks
+  "googlesyndication",      // Google Adsense third-party errors
+  "pagead",                 // Google Adsense pagead resources
+  "Refused to frame 'https://www.google.com/'", // CSP frame warnings from google ads
+  "no_div",                 // Google Adsense container missing error
 ];
 
 function getRoutes() {
@@ -202,10 +206,31 @@ async function main() {
       const isAllowed = (msg) =>
         consoleAllow.some((s) => msg.includes(s));
 
-      page.on("console", (msg) => {
+      page.on("console", async (msg) => {
         if (msg.type() === "error") {
           const text = msg.text();
-          if (!isAllowed(text)) consoleErrors.push({ route: currentRoute, text });
+
+          let parsedText = text;
+          if (text === "JSHandle@error") {
+            // Extract the actual error details from the message arguments
+            const args = msg.args();
+            if (args.length > 0) {
+              try {
+                parsedText = await page.evaluate(arg => {
+                  if (arg instanceof Error) {
+                    return `${arg.name}: ${arg.message}\n${arg.stack}`;
+                  }
+                  return String(arg);
+                }, args[0]);
+              } catch (e) {
+                parsedText = `Failed to serialize console error: ${e.message}`;
+              }
+            }
+          }
+
+          if (!isAllowed(parsedText)) {
+            consoleErrors.push({ route: currentRoute, text: parsedText });
+          }
         }
       });
       page.on("pageerror", (err) => {

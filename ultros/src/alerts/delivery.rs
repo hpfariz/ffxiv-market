@@ -205,7 +205,7 @@ async fn send_to_channel(
     Ok(())
 }
 
-async fn send_dm(
+pub(crate) async fn send_dm(
     user_id: i64,
     title: &str,
     body: &str,
@@ -331,7 +331,7 @@ fn vapid_signature_builder<'a>(
     }
 }
 
-async fn send_webhook(url: &str, title: &str, body: &str) -> Result<()> {
+pub(crate) async fn send_webhook(url: &str, title: &str, body: &str) -> Result<()> {
     // Discord webhook expects JSON with `embeds`. allowed_mentions parse=[] suppresses pings.
     let payload = serde_json::json!({
         "embeds": [{

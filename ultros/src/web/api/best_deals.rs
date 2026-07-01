@@ -76,10 +76,7 @@ pub(crate) async fn get_best_deals(
         _ => None,
     };
 
-    let include_suspicious = match query.show_suspicious.as_deref() {
-        Some("true") | Some("1") => true,
-        _ => false,
-    };
+    let include_suspicious = matches!(query.show_suspicious.as_deref(), Some("true") | Some("1"));
 
     let options = ResaleOptions {
         minimum_profit: query.min_profit,

@@ -318,7 +318,7 @@ where
                             let row_class = if variable_height {
                                 "content-auto contain-layout will-change-transform"
                             } else {
-                                "content-visible contain-layout will-change-transform overflow-hidden"
+                                "content-visible contain-layout will-change-transform"
                             };
                             let row_style = if variable_height {
                                 String::new()

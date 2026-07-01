@@ -1,6 +1,8 @@
 use std::sync::{Arc, OnceLock};
 
-use super::{WebState, error::WebError};
+#[allow(unused_imports)]
+use super::WebState;
+use super::error::WebError;
 use anyhow::{Result, anyhow};
 use axum::{
     body::Body,

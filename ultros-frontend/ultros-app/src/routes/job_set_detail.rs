@@ -338,7 +338,7 @@ fn material_row(m: MaterialEntry) -> impl IntoView {
     let amount = m.amount;
     view! {
         <A
-            href=format!("/item/{}", id)
+            href=format!("/market/item/{}", id)
             attr:class="group flex flex-row items-center gap-2 p-2 rounded-lg panel \
                        border border-white/5 hover:border-brand-500/30 transition-colors"
         >
@@ -448,7 +448,7 @@ pub fn JobSetDetail() -> impl IntoView {
     });
     let back_href = Memo::new(move |_| {
         format!(
-            "/items/jobset/{}",
+            "/market/items/jobset/{}",
             params()
                 .get("jobset")
                 .as_ref()
@@ -554,7 +554,7 @@ pub fn JobSetDetail() -> impl IntoView {
                                     <div class="flex flex-col p-3 rounded-lg panel border border-white/5">
                                         <div class="flex flex-row items-center gap-3 mb-2">
                                             <A
-                                                href=format!("/item/{}", item_id)
+                                                href=format!("/market/item/{}", item_id)
                                                 attr:class="shrink-0 flex items-center justify-center w-12 h-12"
                                             >
                                                 <ItemIcon item_id=item_id icon_size=IconSize::Medium />
@@ -570,7 +570,7 @@ pub fn JobSetDetail() -> impl IntoView {
                                                     ().into_any()
                                                 }}
                                                 <A
-                                                    href=format!("/item/{}", item_id)
+                                                    href=format!("/market/item/{}", item_id)
                                                     attr:class="font-medium text-sm leading-snug \
                                                                hover:text-brand-300 transition-colors line-clamp-2"
                                                 >

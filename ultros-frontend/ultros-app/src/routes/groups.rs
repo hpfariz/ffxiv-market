@@ -59,7 +59,7 @@ pub fn Groups() -> impl IntoView {
 
         <div class="flex flex-col gap-4">
             <div class="flex items-center gap-2 md:gap-3">
-                <A exact=true attr:class="nav-link" href="/groups">
+                <A exact=true attr:class="nav-link" href="/market/groups">
                     <Icon height="1.25em" width="1.25em" icon=i::BiGroupSolid />
                     <span>{t!(i18n, groups)}</span>
                 </A>

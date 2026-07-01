@@ -225,12 +225,12 @@ pub fn HomePage() -> impl IntoView {
                                         </p>
                                         <div class="flex flex-wrap items-center gap-3 pt-4">
                                             <A
-                                                href="/help/getting-started"
+                                                href="/market/help/getting-started"
                                                 attr:class="btn-primary py-3 px-6 text-lg"
                                             >
                                                 {move || t_string!(i18n, get_started)}
                                             </A>
-                                            <A href="/flip-finder" attr:class="btn-primary py-3 px-6 text-lg">
+                                            <A href="/market/flip-finder" attr:class="btn-primary py-3 px-6 text-lg">
                                                 <Icon icon=i::FaMoneyBillTrendUpSolid width="1.25em" height="1.25em" />
                                                 <span>{move || t_string!(i18n, open_flip_finder)}</span>
                                             </A>
@@ -272,31 +272,31 @@ pub fn HomePage() -> impl IntoView {
                     <section class="dashboard-section">
                         <h2 class="dashboard-section-title mb-3">{t!(i18n, side_nav_tools)}</h2>
                         <div class="flex max-w-full gap-1 overflow-x-auto pb-2 -mx-2 px-2 scroll-snap-x snap-x">
-                            <ToolChip href="/items" label=t!(i18n, item_explorer).into_any()>
+                            <ToolChip href="/market/items" label=t!(i18n, item_explorer).into_any()>
                                 <Icon width="2em" height="2em" icon=i::FaScrewdriverWrenchSolid />
                             </ToolChip>
-                            <ToolChip href="/flip-finder" label=t!(i18n, flip_finder).into_any()>
+                            <ToolChip href="/market/flip-finder" label=t!(i18n, flip_finder).into_any()>
                                 <Icon width="2em" height="2em" icon=i::FaMoneyBillTrendUpSolid />
                             </ToolChip>
-                            <ToolChip href="/vendor-resale" label=t!(i18n, vendor_resale).into_any()>
+                            <ToolChip href="/market/vendor-resale" label=t!(i18n, vendor_resale).into_any()>
                                 <Icon width="2em" height="2em" icon=i::FaShopSolid />
                             </ToolChip>
-                            <ToolChip href="/recipe-analyzer" label=t!(i18n, recipe_analyzer).into_any()>
+                            <ToolChip href="/market/recipe-analyzer" label=t!(i18n, recipe_analyzer).into_any()>
                                 <Icon width="2em" height="2em" icon=i::FaHammerSolid />
                             </ToolChip>
-                            <ToolChip href="/leve-analyzer" label=t!(i18n, leve_analyzer).into_any()>
+                            <ToolChip href="/market/leve-analyzer" label=t!(i18n, leve_analyzer).into_any()>
                                 <Icon width="2em" height="2em" icon=i::FaScrollSolid />
                             </ToolChip>
-                            <ToolChip href="/trends" label=t!(i18n, market_trends).into_any()>
+                            <ToolChip href="/market/trends" label=t!(i18n, market_trends).into_any()>
                                 <Icon width="2em" height="2em" icon=i::FaChartLineSolid />
                             </ToolChip>
-                            <ToolChip href="/retainers" label=t!(i18n, retainers).into_any()>
+                            <ToolChip href="/market/retainers" label=t!(i18n, retainers).into_any()>
                                 <Icon width="2em" height="2em" icon=i::BiGroupSolid />
                             </ToolChip>
-                            <ToolChip href="/list" label=t!(i18n, lists).into_any()>
+                            <ToolChip href="/market/list" label=t!(i18n, lists).into_any()>
                                 <Icon width="2em" height="2em" icon=i::AiOrderedListOutlined />
                             </ToolChip>
-                            <ToolChip href="/currency-exchange" label=t!(i18n, currency_exchange).into_any()>
+                            <ToolChip href="/market/currency-exchange" label=t!(i18n, currency_exchange).into_any()>
                                 <Icon width="2em" height="2em" icon=i::RiExchangeFinanceLine />
                             </ToolChip>
                         </div>

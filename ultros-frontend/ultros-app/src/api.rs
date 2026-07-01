@@ -944,6 +944,290 @@ where
     unreachable!("patch_api should only be called on clients? I think...")
 }
 
+#[cfg(not(feature = "ssr"))]
+#[instrument(skip(json))]
+pub(crate) async fn put_api<Y, T>(path: &str, json: Y) -> AppResult<T>
+where
+    Y: serde::Serialize + 'static,
+    T: serde::de::DeserializeOwned,
+{
+    use leptos::task::spawn_local;
+
+    let path = path.to_string();
+    let (tx, rx) = flume::unbounded::<AppResult<String>>();
+    spawn_local(async move {
+        let inner_impl = async move || -> AppResult<String> {
+            let body = serde_json::to_string(&json)
+                .map_err(|e| anyhow::anyhow!("failed to serialize json body: {:?}", e))?;
+            let json: String = gloo_net::http::Request::put(&path)
+                .header("Content-Type", "application/json")
+                .credentials(web_sys::RequestCredentials::Include)
+                .body(body)
+                .map_err(|e| anyhow::anyhow!("failed to set json body: {:?}", e))?
+                .send()
+                .await
+                .inspect_err(|e| {
+                    log::error!("{e}");
+                })?
+                .text()
+                .await
+                .inspect_err(|e| log::error!("{e}"))?;
+            Ok(json)
+        };
+        let result = inner_impl().await;
+        tx.send(result).unwrap();
+    });
+    let json = rx
+        .into_recv_async()
+        .await
+        .expect("The channel to just work")?;
+    deserialize(&json)
+}
+
+#[cfg(feature = "ssr")]
+#[instrument(skip(_json))]
+pub(crate) async fn put_api<Y, T>(_path: &str, _json: Y) -> AppResult<T>
+where
+    Y: Serialize,
+    T: Serialize,
+{
+    unreachable!("put_api should only be called on clients? I think...")
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct SubcraftIngredientDetail {
+    pub item_id: i32,
+    pub name: String,
+    pub quantity: i32,
+    pub cost_per_unit: i64,
+    pub total_cost: i64,
+    pub path: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct CraftingOpportunity {
+    pub recipe_id: i32,
+    pub item_id: i32,
+    pub name: String,
+    pub craft_type: i32,
+    pub level: i32,
+    pub material_cost: i64,
+    pub sell_price: i64,
+    pub net_profit: i64,
+    pub flags: Vec<String>,
+    pub ingredients: Vec<SubcraftIngredientDetail>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct GatheringNodeDetail {
+    pub item_id: i32,
+    pub name: String,
+    pub level: i32,
+    pub unit_price: i64,
+    pub velocity: f64,
+    pub node_score: f64,
+    pub class_kind: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct TimedNodeDetail {
+    pub item_id: i32,
+    pub name: String,
+    pub level: i32,
+    pub unit_price: i64,
+    pub velocity: f64,
+    pub node_score: f64,
+    pub class_kind: String,
+    pub spawn_hours: Vec<i32>,
+    pub duration_hours: i32,
+    pub next_spawn_local: String,
+}
+
+// Client-side profiles API functions
+pub(crate) async fn get_profiles() -> AppResult<Vec<PlayerProfile>> {
+    fetch_api("/api/v1/profiles").await
+}
+
+pub(crate) async fn create_profile(display_name: String) -> AppResult<PlayerProfile> {
+    post_api(
+        "/api/v1/profiles",
+        serde_json::json!({ "display_name": display_name }),
+    )
+    .await
+}
+
+pub(crate) async fn update_profile(
+    id: i32,
+    payload: serde_json::Value,
+) -> AppResult<PlayerProfile> {
+    put_api(&format!("/api/v1/profiles/{id}"), payload).await
+}
+
+pub(crate) async fn delete_profile(id: i32) -> AppResult<()> {
+    delete_api(&format!("/api/v1/profiles/{id}")).await
+}
+
+pub(crate) async fn get_job_levels(id: i32) -> AppResult<Vec<ProfileJobLevel>> {
+    fetch_api(&format!("/api/v1/profiles/{id}/levels")).await
+}
+
+pub(crate) async fn save_job_levels(id: i32, levels: Vec<ProfileJobLevel>) -> AppResult<()> {
+    put_api(
+        &format!("/api/v1/profiles/{id}/levels"),
+        serde_json::json!({ "levels": levels }),
+    )
+    .await
+}
+
+pub(crate) async fn get_arbitrage_settings(id: i32) -> AppResult<ProfileArbitrageSettings> {
+    fetch_api(&format!("/api/v1/profiles/{id}/settings/arbitrage")).await
+}
+
+pub(crate) async fn update_arbitrage_settings(
+    id: i32,
+    settings: serde_json::Value,
+) -> AppResult<ProfileArbitrageSettings> {
+    put_api(
+        &format!("/api/v1/profiles/{id}/settings/arbitrage"),
+        settings,
+    )
+    .await
+}
+
+pub(crate) async fn get_crafting_settings_api(
+    id: i32,
+) -> AppResult<(
+    ProfileCraftingSettings,
+    Vec<ProfileCraftingSubcraftThreshold>,
+)> {
+    fetch_api(&format!("/api/v1/profiles/{id}/settings/crafting")).await
+}
+
+pub(crate) async fn update_crafting_settings_api(
+    id: i32,
+    settings: serde_json::Value,
+) -> AppResult<(
+    ProfileCraftingSettings,
+    Vec<ProfileCraftingSubcraftThreshold>,
+)> {
+    put_api(
+        &format!("/api/v1/profiles/{id}/settings/crafting"),
+        settings,
+    )
+    .await
+}
+
+pub(crate) async fn get_gathering_settings_api(id: i32) -> AppResult<ProfileGatheringSettings> {
+    fetch_api(&format!("/api/v1/profiles/{id}/settings/gathering")).await
+}
+
+pub(crate) async fn update_gathering_settings_api(
+    id: i32,
+    settings: serde_json::Value,
+) -> AppResult<ProfileGatheringSettings> {
+    put_api(
+        &format!("/api/v1/profiles/{id}/settings/gathering"),
+        settings,
+    )
+    .await
+}
+
+pub(crate) async fn get_arbitrage_opportunities_api(
+    id: i32,
+) -> AppResult<Vec<ArbitrageOpportunity>> {
+    fetch_api(&format!("/api/v1/profiles/{id}/arbitrage")).await
+}
+
+pub(crate) async fn get_crafting_opportunities_api(id: i32) -> AppResult<Vec<CraftingOpportunity>> {
+    fetch_api(&format!("/api/v1/profiles/{id}/crafting")).await
+}
+
+pub(crate) async fn get_gathering_routes_api(
+    id: i32,
+) -> AppResult<(Vec<GatheringNodeDetail>, Vec<TimedNodeDetail>)> {
+    fetch_api(&format!("/api/v1/profiles/{id}/gathering")).await
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub(crate) struct PlayerProfile {
+    pub id: i32,
+    pub discord_user_id: i64,
+    pub display_name: String,
+    pub home_world_id: Option<i32>,
+    pub active_datacenter_id: Option<i32>,
+    pub grand_company: Option<String>,
+    pub gil_balance: i64,
+    pub alert_channel_webhook: Option<String>,
+    pub alert_channel_dm: bool,
+    pub alert_item_cooldown_minutes: i32,
+    pub created_at: chrono::NaiveDateTime,
+    pub updated_at: chrono::NaiveDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub(crate) struct ProfileJobLevel {
+    pub profile_id: i32,
+    pub job_id: i32,
+    pub level: i32,
+    pub kind: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub(crate) struct ProfileArbitrageSettings {
+    pub profile_id: i32,
+    pub min_net_profit: i64,
+    pub velocity_threshold: f64,
+    pub travel_cost_rate_per_min: i64,
+    pub min_profit_total: i64,
+    pub category_blocklist: Option<serde_json::Value>,
+    pub category_allowlist: Option<serde_json::Value>,
+    pub world_exclusion_list: Option<serde_json::Value>,
+    pub excluded_item_ids: Option<serde_json::Value>,
+    pub max_listing_age_hours: i32,
+    pub show_stale_panel: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub(crate) struct ProfileCraftingSettings {
+    pub profile_id: i32,
+    pub min_net_profit: i64,
+    pub hq_only: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub(crate) struct ProfileCraftingSubcraftThreshold {
+    pub profile_id: i32,
+    pub crafting_class_id: i32,
+    pub savings_pct_threshold: Option<f64>,
+    pub savings_gil_threshold: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub(crate) struct ProfileGatheringSettings {
+    pub profile_id: i32,
+    pub show_all_levels: bool,
+    pub class_filter: Option<String>,
+    pub min_unit_price: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub(crate) struct ArbitrageOpportunity {
+    pub id: i32,
+    pub profile_id: i32,
+    pub item_id: i32,
+    pub hq: bool,
+    pub source_world_id: i32,
+    pub dest_world_id: i32,
+    pub gross_profit: i64,
+    pub net_profit: i64,
+    pub velocity_score: f64,
+    pub listing_age_seconds: i64,
+    pub total_cost: i64,
+    pub quantity_available: i32,
+    pub over_budget: bool,
+    pub computed_at: chrono::NaiveDateTime,
+}
+
 #[cfg(all(test, feature = "ssr"))]
 mod ssr_response_tests {
     use super::parse_internal_api_response;

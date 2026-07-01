@@ -1,10 +1,12 @@
-use std::collections::HashMap;
 use anyhow::Result;
-use sea_orm::{EntityTrait, ColumnTrait, PaginatorTrait, FromQueryResult, QuerySelect, QueryFilter};
-use ultros_db::UltrosDb;
-use ultros_db::entity::{profile_gathering_settings, sale_history, active_listing};
+use chrono::Utc;
+use sea_orm::{
+    ColumnTrait, EntityTrait, FromQueryResult, PaginatorTrait, QueryFilter, QuerySelect,
+};
 use serde::{Deserialize, Serialize};
-use chrono::{Utc, NaiveDateTime};
+use std::collections::HashMap;
+use ultros_db::UltrosDb;
+use ultros_db::entity::{active_listing, sale_history};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GatheringNodeDetail {
@@ -26,8 +28,8 @@ pub struct TimedNodeDetail {
     pub velocity: f64,
     pub node_score: f64,
     pub class_kind: String,
-    pub spawn_hours: Vec<i32>, // Eorzea hours (e.g. 0, 12)
-    pub duration_hours: i32,    // Eorzea hours (e.g. 2)
+    pub spawn_hours: Vec<i32>,    // Eorzea hours (e.g. 0, 12)
+    pub duration_hours: i32,      // Eorzea hours (e.g. 2)
     pub next_spawn_local: String, // ISO timestamp of next real-world spawn
 }
 
@@ -55,7 +57,10 @@ impl GatheringOptimizer {
         show_all_levels: bool,
     ) -> Result<(Vec<GatheringNodeDetail>, Vec<TimedNodeDetail>)> {
         let settings = self.db.get_gathering_settings(profile_id).await?;
-        let profile = self.db.get_profile_by_id(profile_id).await?
+        let profile = self
+            .db
+            .get_profile_by_id(profile_id)
+            .await?
             .ok_or_else(|| anyhow::anyhow!("Profile not found"))?;
 
         let active_dc_id = match profile.active_datacenter_id {
@@ -86,7 +91,7 @@ impl GatheringOptimizer {
                     18 => "Fisher".to_string(),
                     _ => "Miner".to_string(),
                 };
-                (name, jl.level as i32)
+                (name, jl.level)
             })
             .collect();
 
@@ -145,7 +150,8 @@ impl GatheringOptimizer {
         ];
 
         // Gather all gatherable item IDs (both from static list and xiv-gen gathering items)
-        let mut gatherable_item_ids: Vec<i32> = data.gathering_items.values().map(|g| g.item).collect();
+        let mut gatherable_item_ids: Vec<i32> =
+            data.gathering_items.values().map(|g| g.item).collect();
         for meta in &timed_metadata {
             gatherable_item_ids.push(meta.item_id);
         }
@@ -153,13 +159,15 @@ impl GatheringOptimizer {
         gatherable_item_ids.dedup();
 
         // Batch-fetch lowest DC prices
-        let lowest_prices = self.fetch_dc_lowest_prices(&dc_world_ids, &gatherable_item_ids).await?;
+        let lowest_prices = self
+            .fetch_dc_lowest_prices(&dc_world_ids, &gatherable_item_ids)
+            .await?;
 
         // 2. Compute Always-Available routes
         let mut always_available = Vec::new();
         for g_item in data.gathering_items.values() {
             let item_id = g_item.item;
-            
+
             // Skip if this is a timed node item
             if timed_metadata.iter().any(|m| m.item_id == item_id) {
                 continue;
@@ -172,21 +180,23 @@ impl GatheringOptimizer {
 
             // Map ClassJob to kind
             // MIN = 16, BTN = 17, FSH = 18
-            let (class_kind, job_id) = if item.item_search_category >= 14 && item.item_search_category <= 16 {
-                ("Miner".to_string(), 16)
-            } else if item.item_search_category >= 17 && item.item_search_category <= 20 {
-                ("Botanist".to_string(), 17)
-            } else if item.item_search_category >= 22 && item.item_search_category <= 23 {
-                ("Fisher".to_string(), 18)
-            } else {
-                ("Miner".to_string(), 16)
-            };
+            let class_kind =
+                if item.item_search_category >= 14 && item.item_search_category <= 16 {
+                    ("Miner".to_string(), 16)
+                } else if item.item_search_category >= 17 && item.item_search_category <= 20 {
+                    ("Botanist".to_string(), 17)
+                } else if item.item_search_category >= 22 && item.item_search_category <= 23 {
+                    ("Fisher".to_string(), 18)
+                } else {
+                    ("Miner".to_string(), 16)
+                }
+                .0;
 
             // Apply Class filters
-            if let Some(ref cf) = settings.class_filter {
-                if cf != &class_kind {
-                    continue;
-                }
+            if let Some(ref cf) = settings.class_filter
+                && cf != &class_kind
+            {
+                continue;
             }
 
             // Apply Level filters
@@ -202,10 +212,10 @@ impl GatheringOptimizer {
                 continue;
             }
 
-            if let Some(min_price) = settings.min_unit_price {
-                if unit_price < min_price {
-                    continue;
-                }
+            if let Some(min_price) = settings.min_unit_price
+                && unit_price < min_price
+            {
+                continue;
             }
 
             // Compute velocity score
@@ -224,18 +234,20 @@ impl GatheringOptimizer {
         }
 
         // Sort by Node Score descending
-        always_available.sort_by(|a, b| b.node_score.partial_cmp(&a.node_score).unwrap_or(std::cmp::Ordering::Equal));
+        always_available.sort_by(|a, b| {
+            b.node_score
+                .partial_cmp(&a.node_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // 3. Compute Timed Nodes
         let mut timed_nodes = Vec::new();
-        let eorzea_multiplier = 3600.0 / 175.0; // 20.57142857142857
-
         for meta in timed_metadata {
             // Apply Class filters
-            if let Some(ref cf) = settings.class_filter {
-                if cf != meta.class_kind {
-                    continue;
-                }
+            if let Some(ref cf) = settings.class_filter
+                && cf != meta.class_kind
+            {
+                continue;
             }
 
             // Apply Level filters
@@ -251,10 +263,10 @@ impl GatheringOptimizer {
                 continue;
             }
 
-            if let Some(min_price) = settings.min_unit_price {
-                if unit_price < min_price {
-                    continue;
-                }
+            if let Some(min_price) = settings.min_unit_price
+                && unit_price < min_price
+            {
+                continue;
             }
 
             let velocity = self.fetch_velocity(meta.item_id, &dc_world_ids).await?;
@@ -278,7 +290,11 @@ impl GatheringOptimizer {
         }
 
         // Sort by Node Score descending
-        timed_nodes.sort_by(|a, b| b.node_score.partial_cmp(&a.node_score).unwrap_or(std::cmp::Ordering::Equal));
+        timed_nodes.sort_by(|a, b| {
+            b.node_score
+                .partial_cmp(&a.node_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         Ok((always_available, timed_nodes))
     }
@@ -355,7 +371,7 @@ fn get_next_spawn_time(spawn_hours: Vec<i32>) -> String {
     let eorzea_multiplier = 3600.0 / 175.0; // 20.57142857142857
     let real_now_ms = Utc::now().timestamp_millis() as f64;
     let eorzea_now_ms = real_now_ms * eorzea_multiplier;
-    
+
     let current_eorzea_hour = ((eorzea_now_ms / 3_600_000.0) % 24.0) as i32;
 
     // Find the next spawn hour
@@ -377,7 +393,7 @@ fn get_next_spawn_time(spawn_hours: Vec<i32>) -> String {
     // Convert Eorzea hour diff to real-world minutes/seconds
     // 1 Eorzea hour = 175 real-world seconds
     let real_diff_seconds = hour_diff as f64 * 175.0;
-    
+
     let next_spawn_time = Utc::now() + chrono::Duration::seconds(real_diff_seconds as i64);
     next_spawn_time.to_rfc3339()
 }

@@ -91,6 +91,10 @@ xiv-gen = { path = "./xiv-gen", features = [
     "company_craft_draft_category",
     "company_craft_type",
     "company_craft_draft",
+    "gathering_item",
+    "gathering_point",
+    "gathering_point_base",
+    "spearfishing_item",
 ] }
 icondata = "0.7"
 icondata_core = "0.1"
@@ -152,7 +156,7 @@ strip = "debuginfo"
 # panic = "unwind" preserved so sentry's panic hook can capture and flush.
 [profile.server-release]
 inherits = "release"
-debug = "line-tables-only"
+debug = false
 
 [profile.dev]
 # opt-level = 1

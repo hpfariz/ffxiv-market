@@ -142,7 +142,7 @@ pub fn LiveSaleTicker() -> impl IntoView {
                 <div class="text-sm text-[color:var(--color-text-muted)]">
                     {t!(i18n, live_sale_no_homeworld_prefix)}
                     <A
-                        href="/settings"
+                        href="/market/settings"
                         attr:class="text-[color:var(--accent)] hover:underline transition-colors"
                     >
                         {t!(i18n, settings)}
@@ -191,7 +191,7 @@ pub fn LiveSaleTicker() -> impl IntoView {
                         <For each=sales key=|sale| sale.sold_date let:sale>
                             <A href=move || {
                                 format!(
-                                    "/item/{}/{}",
+                                    "/market/item/{}/{}",
                                     homeworld().map(|world| world.name).unwrap_or_default(),
                                     sale.item_id,
                                 )

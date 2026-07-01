@@ -150,7 +150,7 @@ fn MoverRow(item: MoverItem, world_name: String, tab: MoverTab) -> impl IntoView
 
     view! {
         <a
-            href=format!("/item/{}/{}", world_name, item_id)
+            href=format!("/market/item/{}/{}", world_name, item_id)
             class=format!("{ROW_GRID} group px-1 py-2 border-b border-[color:var(--line)] hover:bg-[color:color-mix(in_srgb,var(--brand-ring)_8%,transparent)] transition-colors")
         >
             <ItemIcon item_id icon_size=IconSize::Small />

@@ -47,7 +47,7 @@ pub fn ListInviteAccept() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(Ok(list_id)) = redeem_invite.value().get() {
-            navigate(&format!("/list/{list_id}"), Default::default());
+            navigate(&format!("/market/list/{list_id}"), Default::default());
         }
     });
 
@@ -71,7 +71,7 @@ pub fn ListInviteAccept() -> impl IntoView {
                                     ultros_api_types::result::ApiError::NotAuthenticated
                                 )
                             ) {
-                                let href = format!("/login?next=/list/invite/{}", invite_id());
+                                let href = format!("/login?next=/market/list/invite/{}", invite_id());
                                 view! {
                                     <div class="space-y-4">
                                         <div class="rounded-lg border border-[color:var(--color-outline)] bg-[color:var(--color-background-panel)] p-4 text-sm text-[color:var(--color-text-muted)]">
@@ -97,7 +97,7 @@ pub fn ListInviteAccept() -> impl IntoView {
                                 Some(Err(e)) => view! {
                                     <div class="space-y-3">
                                         <div class="alert alert-error">{format!("Could not accept invite: {e}")}</div>
-                                        <A href="/list" attr:class="btn-secondary">{t!(i18n, lists_back_to_lists_link)}</A>
+                                        <A href="/market/list" attr:class="btn-secondary">{t!(i18n, lists_back_to_lists_link)}</A>
                                     </div>
                                 }.into_any(),
                                 None => view! {
@@ -252,7 +252,7 @@ fn ListCard(
                         <>
                             <div class="flex justify-between items-start gap-2">
                                 <div class="flex flex-col gap-1 overflow-hidden">
-                                    <a href=format!("/list/{}", list.id) class="text-xl font-bold hover:underline truncate text-[color:var(--link-color)]">
+                                    <a href=format!("/market/list/{}", list.id) class="text-xl font-bold hover:underline truncate text-[color:var(--link-color)]">
                                         {move || name()}
                                     </a>
                                     <div class="text-sm text-gray-400 flex items-center gap-1 flex-wrap">
@@ -290,7 +290,7 @@ fn ListCard(
                                 </div>
                             </div>
                             <div class="mt-4 flex justify-end">
-                                <a href=format!("/list/{}", list.id) class="btn-secondary btn-sm">
+                                <a href=format!("/market/list/{}", list.id) class="btn-secondary btn-sm">
                                     {t!(i18n, view_items)} <Icon icon=i::AiArrowRightOutlined attr:class="ml-1"/>
                                 </a>
                             </div>
@@ -354,7 +354,7 @@ pub fn EditLists() -> impl IntoView {
         <MetaRobotsNoIndex />
         <div class="flex flex-col gap-4">
             <div class="flex items-center gap-2 md:gap-3">
-                <A exact=true attr:class="nav-link" href="/list">
+                <A exact=true attr:class="nav-link" href="/market/list">
                     <Icon height="1.25em" width="1.25em" icon=i::AiOrderedListOutlined />
                     <span>{t!(i18n, lists)}</span>
                 </A>

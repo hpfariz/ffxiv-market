@@ -1,17 +1,20 @@
 use std::sync::Arc;
+
 use axum::{
     Json,
     extract::{Path, State},
-    response::sse::{Event, Sse},
+    response::{
+        IntoResponse,
+        sse::{Event, Sse},
+    },
 };
-use futures::stream::Stream;
-use tokio_stream::wrappers::BroadcastStream;
-use tokio_stream::StreamExt;
 use serde::{Deserialize, Serialize};
-use ultros_db::{UltrosDb, entity::*};
+use tokio_stream::StreamExt;
+use tokio_stream::wrappers::BroadcastStream;
+use ultros_db::{UltrosDb, entity::*, lists::ListError};
+
 use crate::web::error::ApiError;
 use crate::web::oauth::AuthDiscordUser;
-use crate::worker::ws_health_monitor::FeedEvent;
 
 // Payload structs
 #[derive(Deserialize)]
@@ -72,11 +75,20 @@ pub struct HealthResponse {
 }
 
 // Helpers
-async fn check_profile_owner(db: &UltrosDb, profile_id: i32, user_id: i64) -> Result<player_profile::Model, ApiError> {
-    let profile = db.get_profile_by_id(profile_id).await?
-        .ok_or_else(|| anyhow::anyhow!("Profile not found"))?;
+async fn check_profile_owner(
+    db: &UltrosDb,
+    profile_id: i32,
+    user_id: i64,
+) -> Result<player_profile::Model, ApiError> {
+    let profile = db
+        .get_profile_by_id(profile_id)
+        .await?
+        .ok_or_else(|| anyhow::Error::new(ListError::NotFound))?;
     if profile.discord_user_id != user_id {
-        return Err(anyhow::anyhow!("Forbidden").into());
+        return Err(anyhow::Error::new(ListError::Forbidden(
+            "Profile does not belong to this user",
+        ))
+        .into());
     }
     Ok(profile)
 }
@@ -115,7 +127,7 @@ pub async fn update_profile(
     Json(payload): Json<ProfileUpdatePayload>,
 ) -> Result<Json<player_profile::Model>, ApiError> {
     let _ = check_profile_owner(&db, id, user.id as i64).await?;
-    
+
     let mut active_model = player_profile::ActiveModel {
         id: sea_orm::ActiveValue::Set(id),
         ..Default::default()
@@ -197,7 +209,7 @@ pub async fn update_arbitrage_settings(
     Json(payload): Json<ArbitrageSettingsPayload>,
 ) -> Result<Json<profile_arbitrage_settings::Model>, ApiError> {
     let _ = check_profile_owner(&db, id, user.id as i64).await?;
-    
+
     let active_model = profile_arbitrage_settings::ActiveModel {
         profile_id: sea_orm::ActiveValue::Set(id),
         min_net_profit: sea_orm::ActiveValue::Set(payload.min_net_profit),
@@ -220,7 +232,13 @@ pub async fn get_crafting_settings(
     user: AuthDiscordUser,
     State(db): State<UltrosDb>,
     Path(id): Path<i32>,
-) -> Result<Json<(profile_crafting_settings::Model, Vec<profile_crafting_subcraft_threshold::Model>)>, ApiError> {
+) -> Result<
+    Json<(
+        profile_crafting_settings::Model,
+        Vec<profile_crafting_subcraft_threshold::Model>,
+    )>,
+    ApiError,
+> {
     let _ = check_profile_owner(&db, id, user.id as i64).await?;
     let settings = db.get_crafting_settings(id).await?;
     Ok(Json(settings))
@@ -231,16 +249,24 @@ pub async fn update_crafting_settings(
     State(db): State<UltrosDb>,
     Path(id): Path<i32>,
     Json(payload): Json<CraftingSettingsPayload>,
-) -> Result<Json<(profile_crafting_settings::Model, Vec<profile_crafting_subcraft_threshold::Model>)>, ApiError> {
+) -> Result<
+    Json<(
+        profile_crafting_settings::Model,
+        Vec<profile_crafting_subcraft_threshold::Model>,
+    )>,
+    ApiError,
+> {
     let _ = check_profile_owner(&db, id, user.id as i64).await?;
-    
+
     let settings_active = profile_crafting_settings::ActiveModel {
         profile_id: sea_orm::ActiveValue::Set(id),
         min_net_profit: sea_orm::ActiveValue::Set(payload.min_net_profit),
         hq_only: sea_orm::ActiveValue::Set(payload.hq_only),
     };
 
-    let updated = db.update_crafting_settings(id, settings_active, payload.thresholds).await?;
+    let updated = db
+        .update_crafting_settings(id, settings_active, payload.thresholds)
+        .await?;
     Ok(Json(updated))
 }
 
@@ -261,7 +287,7 @@ pub async fn update_gathering_settings(
     Json(payload): Json<GatheringSettingsPayload>,
 ) -> Result<Json<profile_gathering_settings::Model>, ApiError> {
     let _ = check_profile_owner(&db, id, user.id as i64).await?;
-    
+
     let active_model = profile_gathering_settings::ActiveModel {
         profile_id: sea_orm::ActiveValue::Set(id),
         show_all_levels: sea_orm::ActiveValue::Set(payload.show_all_levels),
@@ -298,7 +324,13 @@ pub async fn get_gathering_routes(
     user: AuthDiscordUser,
     State(db): State<UltrosDb>,
     Path(id): Path<i32>,
-) -> Result<Json<(Vec<crate::worker::gathering_optimizer::GatheringNodeDetail>, Vec<crate::worker::gathering_optimizer::TimedNodeDetail>)>, ApiError> {
+) -> Result<
+    Json<(
+        Vec<crate::worker::gathering_optimizer::GatheringNodeDetail>,
+        Vec<crate::worker::gathering_optimizer::TimedNodeDetail>,
+    )>,
+    ApiError,
+> {
     let _ = check_profile_owner(&db, id, user.id as i64).await?;
     let optimizer = crate::worker::gathering_optimizer::GatheringOptimizer::new(db.clone());
     let routes = optimizer.optimize_gathering_routes(id, false).await?;
@@ -308,16 +340,13 @@ pub async fn get_gathering_routes(
 pub async fn get_health(
     State(health_monitor): State<Arc<crate::worker::ws_health_monitor::WsHealthMonitor>>,
 ) -> Result<Json<HealthResponse>, ApiError> {
-    // Check health monitor state
-    // To do this simply, we will do a fast read from the DB for max active_listing timestamp
-    let (tx, mut rx) = tokio::sync::broadcast::channel(2);
-    let mut sub = health_monitor.subscribe();
-    
+    // We can query the health directly via a fast DB read for max active_listing timestamp:
+
     // We can query the health directly or rely on the broadcast's current event.
     // However, since it doesn't store the last event inside the struct directly,
     // we can run a quick check of the lag like in ws_health_monitor:
-    use sea_orm::{EntityTrait, ColumnTrait, QuerySelect, FromQueryResult};
-    use chrono::{Utc, NaiveDateTime};
+    use chrono::{NaiveDateTime, Utc};
+    use sea_orm::{ColumnTrait, EntityTrait, FromQueryResult, QuerySelect};
 
     #[derive(FromQueryResult)]
     struct MaxTimestamp {
@@ -355,18 +384,22 @@ pub async fn get_health(
 
 pub async fn get_events(
     State(health_monitor): State<Arc<crate::worker::ws_health_monitor::WsHealthMonitor>>,
-) -> Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>> {
+) -> impl IntoResponse {
     let rx = health_monitor.subscribe();
-    let stream = BroadcastStream::new(rx)
-        .filter_map(|res| match res {
-            Ok(event) => {
-                if let Ok(json) = serde_json::to_string(&event) {
-                    Some(Ok(Event::default().data(json)))
-                } else {
-                    None
-                }
+    let stream = BroadcastStream::new(rx).filter_map(|res| match res {
+        Ok(event) => {
+            if let Ok(json) = serde_json::to_string(&event) {
+                let event_res: Result<Event, std::convert::Infallible> =
+                    Ok(Event::default().data(json));
+                Some(event_res)
+            } else {
+                None
             }
-            Err(_) => None,
-        });
-    Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default())
+        }
+        Err(_) => None,
+    });
+    (
+        [("x-accel-buffering", "no"), ("cache-control", "no-cache")],
+        Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::default()),
+    )
 }

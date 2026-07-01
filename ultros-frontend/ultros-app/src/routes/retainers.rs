@@ -76,7 +76,7 @@ fn RetainerUndercutTable(retainer: Retainer, listings: Vec<UndercutData>) -> imp
                                 view! {
                                     <A
                                         attr:class="flex flex-row"
-                                        href=format!("/item/{world_name}/{}", listing.item_id)
+                                        href=format!("/market/item/{world_name}/{}", listing.item_id)
                                     >
                                         <ItemIcon
                                             icon_size=IconSize::Small
@@ -158,7 +158,7 @@ fn RetainerTable(retainer: Retainer, listings: Vec<ActiveListing>) -> impl IntoV
                                 view! {
                                     <A
                                         attr:class="flex flex-row"
-                                        href=format!("/item/{}/{}", world_name, listing.item_id)
+                                        href=format!("/market/item/{}/{}", world_name, listing.item_id)
                                     >
                                         <ItemIcon
                                             icon_size=IconSize::Small
@@ -344,7 +344,7 @@ pub fn SingleRetainerListings() -> impl IntoView {
     view! {
         <span>
             {t!(i18n, retainers_claim_prompt_start)}
-            <A href="/retainers/edit">{t!(i18n, retainers_claim_prompt_link)}</A>
+            <A href="/market/retainers/edit">{t!(i18n, retainers_claim_prompt_link)}</A>
         </span>
         <Suspense fallback=move || {
             view! {
@@ -456,15 +456,15 @@ pub fn Retainers() -> impl IntoView {
     view! {
         <MetaRobotsNoIndex />
         <div class="flex items-center gap-2 md:gap-3 mb-3">
-            <A exact=true attr:class="nav-link" href="/retainers/edit">
+            <A exact=true attr:class="nav-link" href="/market/retainers/edit">
                 <Icon height="1.25em" width="1.25em" icon=i::BsPencilFill />
                 <span>{t!(i18n, retainers_edit_tab)}</span>
             </A>
-            <A exact=true attr:class="nav-link" href="/retainers/listings">
+            <A exact=true attr:class="nav-link" href="/market/retainers/listings">
                 <Icon height="1.25em" width="1.25em" icon=i::AiOrderedListOutlined />
                 <span>{t!(i18n, retainers_all_listings_tab)}</span>
             </A>
-            <A exact=true attr:class="nav-link" href="/retainers/undercuts">
+            <A exact=true attr:class="nav-link" href="/market/retainers/undercuts">
                 <Icon height="1.25em" width="1.25em" icon=i::AiExclamationOutlined />
                 <span>{t!(i18n, retainers_undercuts_tab)}</span>
             </A>

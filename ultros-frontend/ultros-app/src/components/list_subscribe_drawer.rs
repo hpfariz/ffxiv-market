@@ -159,7 +159,7 @@ pub fn ListSubscribeDrawer(
                             Ok(list) if list.is_empty() => view! {
                                 <p class="text-sm opacity-70">
                                     {t!(i18n, alert_drawer_no_endpoints_prefix)}
-                                    <a href="/alerts" class="underline">{t!(i18n, alert_drawer_no_endpoints_link)}</a>
+                                    <a href="/market/alerts" class="underline">{t!(i18n, alert_drawer_no_endpoints_link)}</a>
                                     {t!(i18n, alert_drawer_no_endpoints_suffix)}
                                 </p>
                             }.into_any(),

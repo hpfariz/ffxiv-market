@@ -428,8 +428,10 @@ fn AnalyzerTable(
     let items = &tracked_data().items;
     let (sort_mode, _set_sort_mode) = query_signal::<SortMode>("sort");
     let (minimum_profit, set_minimum_profit) = query_signal::<i32>("profit");
+    let (maximum_profit, set_maximum_profit) = query_signal::<i32>("max-profit");
     let (minimum_profit_per_day, set_minimum_profit_per_day) = query_signal::<i32>("ppd");
     let (minimum_roi, set_minimum_roi) = query_signal::<i32>("roi");
+    let (maximum_roi, set_maximum_roi) = query_signal::<i32>("max-roi");
     let (max_predicted_time, set_max_predicted_time) = query_signal::<String>("next-sale");
     let (world_filter, set_world_filter) = query_signal::<String>("world");
     let (datacenter_filter, set_datacenter_filter) = query_signal::<String>("datacenter");
@@ -524,6 +526,11 @@ fn AnalyzerTable(
                     .unwrap_or(true)
             })
             .filter(move |data| {
+                maximum_profit()
+                    .map(|max| data.profit <= max)
+                    .unwrap_or(true)
+            })
+            .filter(move |data| {
                 minimum_profit_per_day()
                     .map(|min| data.profit_per_day > min)
                     .unwrap_or(true)
@@ -531,6 +538,11 @@ fn AnalyzerTable(
             .filter(move |data| {
                 minimum_roi()
                     .map(|roi| data.return_on_investment > roi)
+                    .unwrap_or(true)
+            })
+            .filter(move |data| {
+                maximum_roi()
+                    .map(|roi| data.return_on_investment <= roi)
                     .unwrap_or(true)
             })
             .filter(move |data| {
@@ -743,6 +755,24 @@ fn AnalyzerTable(
                         }
                     />
                 </ToolbarField>
+                <ToolbarField label="Max Profit (Gil)".to_string()>
+                    <input
+                        class="input input-sm w-32"
+                        min=0
+                        step=10000
+                        placeholder="eg. 1000000"
+                        type="number"
+                        prop:value=maximum_profit
+                        on:input=move |input| {
+                            let value = event_target_value(&input);
+                            if let Ok(profit) = value.parse::<i32>() {
+                                set_maximum_profit(Some(profit));
+                            } else if value.is_empty() {
+                                set_maximum_profit(None);
+                            }
+                        }
+                    />
+                </ToolbarField>
                 <ToolbarField label=t_string!(i18n, analyzer_filter_roi_min_label).to_string()>
                     <input
                         class="input input-sm w-28"
@@ -758,6 +788,24 @@ fn AnalyzerTable(
                                 set_minimum_roi(Some(roi));
                             } else if value.is_empty() {
                                 set_minimum_roi(None);
+                            }
+                        }
+                    />
+                </ToolbarField>
+                <ToolbarField label="Max ROI (%)".to_string()>
+                    <input
+                        class="input input-sm w-28"
+                        min=0
+                        step=10
+                        placeholder="eg. 1000"
+                        type="number"
+                        prop:value=maximum_roi
+                        on:input=move |input| {
+                            let value = event_target_value(&input);
+                            if let Ok(roi) = value.parse::<i32>() {
+                                set_maximum_roi(Some(roi));
+                            } else if value.is_empty() {
+                                set_maximum_roi(None);
                             }
                         }
                     />
@@ -940,7 +988,7 @@ fn AnalyzerTable(
                                 }
                             }
                         />
-                    </ToolbarField>
+                      </ToolbarField>
                     <ToolbarField label=t_string!(i18n, analyzer_filter_min_buy_label).to_string()>
                         <input
                             class="input input-sm w-32"
@@ -1117,6 +1165,26 @@ fn AnalyzerTable(
                                 </span>
                             }.into_any());
                         }
+                        if let Some(roi) = maximum_roi() {
+                            chips.push(view! {
+                                <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm text-[color:var(--color-text)] bg-[color:color-mix(in_srgb,var(--brand-ring)_14%,transparent)] border-[color:var(--color-outline)]">
+                                    "ROI ≤ " {roi} "%"
+                                    <button aria-label=t_string!(i18n, aria_remove_filter) class="ml-1 text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text)]" on:click=move |_| set_maximum_roi(None)>
+                                        <Icon icon=icondata::MdiClose />
+                                    </button>
+                                </span>
+                            }.into_any());
+                        }
+                        if let Some(p) = maximum_profit() {
+                            chips.push(view! {
+                                <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm text-[color:var(--color-text)] bg-[color:color-mix(in_srgb,var(--brand-ring)_14%,transparent)] border-[color:var(--color-outline)]">
+                                    "Profit ≤ " <Gil amount=p />
+                                    <button aria-label=t_string!(i18n, aria_remove_filter) class="ml-1 text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text)]" on:click=move |_| set_maximum_profit(None)>
+                                        <Icon icon=icondata::MdiClose />
+                                    </button>
+                                </span>
+                            }.into_any());
+                        }
                         if chips.is_empty() {
                             Either::Left(view! { <span class="text-sm text-[color:var(--color-text-muted)]">{t!(i18n, analyzer_no_active_filters)}</span> })
                         } else {
@@ -1126,8 +1194,10 @@ fn AnalyzerTable(
                 </div>
                 <button aria-label=t_string!(i18n, aria_clear_all_filters) class="text-sm text-[color:var(--color-text-muted)] hover:text-[color:var(--color-text)] self-start md:self-auto" on:click=move |_| {
                     set_minimum_profit(None);
+                    set_maximum_profit(None);
                     set_minimum_profit_per_day(None);
                     set_minimum_roi(None);
+                    set_maximum_roi(None);
                     set_max_predicted_time(None);
                     set_world_filter(None);
                     set_datacenter_filter(None);
@@ -1159,14 +1229,14 @@ fn AnalyzerTable(
                                 <div role="columnheader" class="flex-1 min-w-[14rem] px-3">
                                     {t!(i18n, analyzer_col_item)}
                                 </div>
-                                <div role="columnheader" class="w-28 px-3 text-right">
+                                <div role="columnheader" class="w-28 px-3 flex justify-end text-right">
                                     <QueryButton
-                                        class="!text-brand-300 hover:text-brand-200"
+                                        class="!text-brand-300 hover:text-brand-200 w-full"
                                         active_classes="!text-[color:var(--brand-fg)] hover:!text-[color:var(--brand-fg)]"
                                         key="sort"
                                         value="profit"
                                     >
-                                        <div class="flex items-center gap-2">
+                                        <div class="flex items-center justify-end gap-2 w-full">
                                             {t!(i18n, analyzer_col_profit)}
                                             {move || {
                                                 (sort_mode() == Some(SortMode::Profit))
@@ -1176,14 +1246,14 @@ fn AnalyzerTable(
                                     </QueryButton>
                                 </div>
                                 {move || visible_cols().contains(COL_PROFIT_PER_DAY).then(|| view! {
-                                    <div role="columnheader" class="w-28 px-3 py-2">
+                                    <div role="columnheader" class="w-28 px-3 py-2 flex justify-end text-right">
                                         <QueryButton
-                                            class="!text-brand-300 hover:text-brand-200"
+                                            class="!text-brand-300 hover:text-brand-200 w-full"
                                             active_classes="!text-[color:var(--brand-fg)] hover:!text-[color:var(--brand-fg)]"
                                             key="sort"
                                             value="profit-per-day"
                                         >
-                                            <div class="flex items-center gap-2">
+                                            <div class="flex items-center justify-end gap-2 w-full">
                                                 {t!(i18n, analyzer_col_profit_per_day)}
                                                 {move || {
                                                     (sort_mode() == Some(SortMode::ProfitPerDay))
@@ -1193,15 +1263,15 @@ fn AnalyzerTable(
                                         </QueryButton>
                                     </div>
                                 })}
-                                <div role="columnheader" class="w-28 px-3 py-2">
+                                <div role="columnheader" class="w-28 px-3 py-2 flex justify-end text-right">
                                     <QueryButton
-                                        class="!text-brand-300 hover:text-brand-200"
+                                        class="!text-brand-300 hover:text-brand-200 w-full"
                                         active_classes="!text-[color:var(--brand-fg)] hover:!text-[color:var(--brand-fg)]"
                                         key="sort"
                                         value="roi"
                                         default=true
                                     >
-                                        <div class="flex items-center gap-2">
+                                        <div class="flex items-center justify-end gap-2 w-full">
                                             {t!(i18n, analyzer_col_roi)}
                                             {move || {
                                                 (sort_mode() == Some(SortMode::Roi))
@@ -1210,7 +1280,7 @@ fn AnalyzerTable(
                                         </div>
                                     </QueryButton>
                                 </div>
-                                <div role="columnheader" class="w-28 px-3 py-2">
+                                <div role="columnheader" class="w-28 px-3 py-2 flex items-center justify-end text-right">
                                     {t!(i18n, analyzer_col_buy_price)}
                                 </div>
                                 {move || visible_cols().contains(COL_WORLD).then(|| view! {
@@ -1324,23 +1394,23 @@ fn AnalyzerTable(
                                 .unwrap_or_default();
                             let icon_loading = if index < 20 { "eager" } else { "" };
                             let classes = if (index % 2) == 0 {
-                                "flex flex-row items-center flex-nowrap h-10 hover:bg-[color:color-mix(in_srgb,var(--brand-ring)_12%,transparent)] hover:ring-1 hover:ring-[color:color-mix(in_srgb,var(--brand-ring)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--color-text)_6%,transparent)] transition-colors"
+                                "relative hover:z-50 flex flex-row items-center flex-nowrap h-10 hover:bg-[color:color-mix(in_srgb,var(--brand-ring)_12%,transparent)] hover:ring-1 hover:ring-[color:color-mix(in_srgb,var(--brand-ring)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--color-text)_6%,transparent)] transition-colors"
                             } else {
-                                "flex flex-row items-center flex-nowrap h-10 hover:bg-[color:color-mix(in_srgb,var(--brand-ring)_12%,transparent)] hover:ring-1 hover:ring-[color:color-mix(in_srgb,var(--brand-ring)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--color-text)_8%,transparent)] transition-colors"
+                                "relative hover:z-50 flex flex-row items-center flex-nowrap h-10 hover:bg-[color:color-mix(in_srgb,var(--brand-ring)_12%,transparent)] hover:ring-1 hover:ring-[color:color-mix(in_srgb,var(--brand-ring)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--color-text)_8%,transparent)] transition-colors"
                             };
                             view! {
                                 <div class=classes role="row-group">
-                                    <div role="cell" class="px-2 py-2 w-[40px] flex items-center justify-center">
+                                    <div role="cell" class="px-2 py-2 w-[44px] flex items-center justify-center">
                                         {if data.inner.sale_summary.hq {
                                             Some(view! { <span class="px-2 py-0.5 rounded-full text-xs font-semibold border text-[color:var(--color-text)] border-[color:var(--color-outline)] bg-[color:color-mix(in_srgb,var(--brand-ring)_14%,transparent)]">{t!(i18n, analyzer_col_hq)}</span> })
                                         } else {
                                             None
                                         }}
                                     </div>
-                                    <div role="cell" class="px-4 py-2 flex flex-row flex-1 min-w-[14rem] items-center gap-2">
+                                    <div role="cell" class="px-3 py-2 flex flex-row flex-1 min-w-[14rem] items-center gap-2">
                                         <a
                                             class="flex flex-row items-center gap-2 hover:text-brand-300 transition-colors truncate overflow-x-clip w-full"
-                                            href=format!("/item/{}/{item_id}", world())
+                                            href=format!("/market/item/{}/{item_id}", world())
                                         >
                                             <div class="shrink-0">
                                                 <ItemIcon item_id icon_size=IconSize::Small loading=icon_loading />
@@ -1573,7 +1643,7 @@ pub fn AnalyzerWorldView() -> impl IntoView {
                         title=t_string!(i18n, flip_finder).to_string()
                         summary=t_string!(i18n, analyzer_tool_summary).to_string()
                         context=t_string!(i18n, analyzer_tool_context).to_string()
-                        help_href="/help/flip-finder"
+                        help_href="/market/help/flip-finder"
                         help_body=t_string!(i18n, analyzer_tool_help).to_string()
                     />
 
@@ -1764,20 +1834,23 @@ fn AnalyzerWorldNavigator() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(world) = current_world() {
-            let world = world.name;
-            let query_map = query.get_untracked();
-            // `to_query_string()` already includes the leading `?` when the map
-            // is non-empty (and is "" when empty) — don't add another, or the
-            // URL becomes `/flip-finder/World??cols=…`, which parses the query
-            // key as `?cols` and silently drops the column selection on reload.
-            let query = query_map.to_query_string();
-            nav(
-                &format!("/flip-finder/{world}{query}"),
-                NavigateOptions {
-                    scroll: false,
-                    ..Default::default()
-                },
-            );
+            let world_param = params.with(|p| p.get("world").clone().unwrap_or_default());
+            if world.name != world_param {
+                let world = world.name;
+                let query_map = query.get_untracked();
+                // `to_query_string()` already includes the leading `?` when the map
+                // is non-empty (and is "" when empty) — don't add another, or the
+                // URL becomes `/flip-finder/World??cols=…`, which parses the query
+                // key as `?cols` and silently drops the column selection on reload.
+                let query = query_map.to_query_string();
+                nav(
+                    &format!("/market/flip-finder/{world}{query}"),
+                    NavigateOptions {
+                        scroll: false,
+                        ..Default::default()
+                    },
+                );
+            }
         }
     });
 

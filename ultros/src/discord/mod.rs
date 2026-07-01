@@ -80,6 +80,7 @@ pub(crate) async fn start_discord(
     world_helper: Arc<WorldHelper>,
     update_service: Arc<UpdateService>,
     discord_token: String,
+    health_monitor: std::sync::Arc<crate::worker::ws_health_monitor::WsHealthMonitor>,
     token: CancellationToken,
 ) {
     let setup_token = token.clone();
@@ -100,6 +101,80 @@ pub(crate) async fn start_discord(
                 {
                     tracing::error!("failed to register Discord application commands: {e}");
                 }
+
+                // Initialize the merged alert manager
+                crate::alerts::merged_alert::init_merged_alert_manager(db.clone());
+
+                // Spawn background task to alert on FeedEvent status changes
+                let db_clone = db.clone();
+                let ctx_clone = ctx.clone();
+                let mut health_rx = health_monitor.subscribe();
+                tokio::spawn(async move {
+                    use sea_orm::ConnectionTrait;
+                    let mut last_state = crate::worker::ws_health_monitor::FeedEvent::Healthy;
+                    while let Ok(event) = health_rx.recv().await {
+                        let changed = !matches!(
+                            (&event, &last_state),
+                            (
+                                crate::worker::ws_health_monitor::FeedEvent::Healthy,
+                                crate::worker::ws_health_monitor::FeedEvent::Healthy
+                            ) | (
+                                crate::worker::ws_health_monitor::FeedEvent::Disconnected,
+                                crate::worker::ws_health_monitor::FeedEvent::Disconnected
+                            ) | (
+                                crate::worker::ws_health_monitor::FeedEvent::Lagging { .. },
+                                crate::worker::ws_health_monitor::FeedEvent::Lagging { .. }
+                            )
+                        );
+
+                        if changed {
+                            last_state = event.clone();
+                            let (title, body) = match event {
+                                crate::worker::ws_health_monitor::FeedEvent::Healthy => (
+                                    "WebSocket Feed Recovered".to_string(),
+                                    "The FFXIV Universalis market ingestion feed is back online and fully healthy.".to_string(),
+                                ),
+                                crate::worker::ws_health_monitor::FeedEvent::Lagging { lag_seconds } => (
+                                    "WebSocket Feed Lagging".to_string(),
+                                    format!("The market ingestion feed is lagging by {} minutes (threshold is 10 minutes). Listings might be stale.", lag_seconds / 60),
+                                ),
+                                crate::worker::ws_health_monitor::FeedEvent::Disconnected => (
+                                    "WebSocket Feed Disconnected".to_string(),
+                                    "The connection to the FFXIV Universalis WebSocket server has been lost. Retrying...".to_string(),
+                                ),
+                            };
+
+                            // Send to all profiles configured with webhooks / DMs
+                            if let Ok(profiles) = db_clone.get_connection().query_all(sea_orm::Statement::from_string(
+                                sea_orm::DatabaseBackend::Postgres,
+                                "SELECT alert_channel_webhook, alert_channel_dm, discord_user_id FROM player_profile".to_string()
+                            )).await {
+                                for row in profiles {
+                                    if let (Ok(webhook), Ok(dm), Ok(user_id)) = (
+                                        row.try_get::<Option<String>>("", "alert_channel_webhook"),
+                                        row.try_get::<bool>("", "alert_channel_dm"),
+                                        row.try_get::<i64>("", "discord_user_id"),
+                                    ) {
+                                        if let Some(webhook_url) = webhook
+                                            && !webhook_url.trim().is_empty()
+                                        {
+                                            let _ = crate::alerts::delivery::send_webhook(
+                                                &webhook_url,
+                                                &title,
+                                                &body,
+                                            )
+                                            .await;
+                                        }
+                                        if dm {
+                                            let _ = crate::alerts::delivery::send_dm(user_id, &title, &body, &ctx_clone).await;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
                 let (item_events, alert_events) = (
                     (
                         event_receivers.retainers.resubscribe(),

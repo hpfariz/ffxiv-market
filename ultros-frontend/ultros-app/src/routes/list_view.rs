@@ -180,10 +180,12 @@ pub fn ListView() -> impl IntoView {
     #[cfg(not(feature = "ssr"))]
     {
         use gloo_timers::callback::Interval;
-        let interval = Interval::new(1_000, move || {
+        let interval = send_wrapper::SendWrapper::new(Interval::new(1_000, move || {
             set_clock_tick.update(|n| *n = n.wrapping_add(1));
+        }));
+        on_cleanup(move || {
+            drop(interval);
         });
-        interval.forget();
     }
 
     let (menu, set_menu) = signal(MenuState::None);

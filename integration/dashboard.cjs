@@ -108,6 +108,10 @@ const DEFAULT_CONSOLE_ALLOW = [
   "favicon",
   "ERR_BLOCKED_BY_CLIENT",
   "net::ERR_ABORTED",
+  "googlesyndication",      // Google Adsense third-party errors
+  "pagead",                 // Google Adsense pagead resources
+  "Refused to frame 'https://www.google.com/'", // CSP frame warnings from google ads
+  "no_div",                 // Google Adsense container missing error
 ];
 
 async function navigateWithFallback(page, url, timeout) {
@@ -122,7 +126,7 @@ async function navigateWithFallback(page, url, timeout) {
 async function captureOneSurface(
   browser,
   surface,
-  { baseUrl, world, viewport, deviceLabel, outdir, timeout, consoleAllow },
+  { baseUrl, world, viewport, deviceLabel, outdir, timeout, consoleAllow, skipAsserts },
 ) {
   const page = await browser.newPage();
   await page.setViewport(viewport);
@@ -130,10 +134,26 @@ async function captureOneSurface(
   const consoleErrors = [];
   const pageErrors = [];
   const isAllowed = (m) => consoleAllow.some((s) => m.includes(s));
-  page.on("console", (msg) => {
+  page.on("console", async (msg) => {
     if (msg.type() === "error") {
       const t = msg.text();
-      if (!isAllowed(t)) consoleErrors.push(t);
+      let parsedText = t;
+      if (t === "JSHandle@error") {
+        const args = msg.args();
+        if (args.length > 0) {
+          try {
+            parsedText = await page.evaluate(arg => {
+              if (arg instanceof Error) {
+                return `${arg.name}: ${arg.message}\n${arg.stack}`;
+              }
+              return String(arg);
+            }, args[0]);
+          } catch (e) {
+            parsedText = `Failed to serialize console error: ${e.message}`;
+          }
+        }
+      }
+      if (!isAllowed(parsedText)) consoleErrors.push(parsedText);
     }
   });
   page.on("pageerror", (err) => {
@@ -179,7 +199,7 @@ async function captureOneSurface(
   // appears (or we time out).
   await new Promise((r) => setTimeout(r, 1000));
 
-  if (surface.bodyIncludesAny && surface.bodyIncludesAny.length) {
+  if (!skipAsserts && surface.bodyIncludesAny && surface.bodyIncludesAny.length) {
     const wanted = surface.bodyIncludesAny;
     try {
       await page.waitForFunction(
@@ -210,7 +230,7 @@ async function captureOneSurface(
   // Second wave of assertions — for surfaces that depend on a separate
   // LocalResource (e.g. the item view's ConfidenceBadge fetches stats
   // *after* the listing page hydrates). Poll once more.
-  if (surface.bodyAlsoIncludesAny && surface.bodyAlsoIncludesAny.length) {
+  if (!skipAsserts && surface.bodyAlsoIncludesAny && surface.bodyAlsoIncludesAny.length) {
     const wanted = surface.bodyAlsoIncludesAny;
     try {
       await page.waitForFunction(
@@ -279,6 +299,7 @@ async function main() {
   const WORLD = process.env.WORLD || "Gilgamesh";
   const TIMEOUT_MS = Number(process.env.TIMEOUT_MS || 60000);
   const headless = parseHeadless(process.env.HEADLESS);
+  const SKIP_ASSERTS = process.env.SKIP_ASSERTS === "1" || String(process.env.SKIP_ASSERTS).toLowerCase() === "true";
 
   const userAllow = (process.env.CONSOLE_ALLOW || "")
     .split(",")
@@ -292,6 +313,7 @@ async function main() {
   console.log(`[info] BASE_URL=${BASE_URL}`);
   console.log(`[info] WORLD=${WORLD}`);
   console.log(`[info] OUTPUT_DIR=${outdir}`);
+  console.log(`[info] SKIP_ASSERTS=${SKIP_ASSERTS}`);
 
   const desktopViewport = { width: 1280, height: 800, deviceScaleFactor: 1 };
   const mobileViewport = {
@@ -324,6 +346,7 @@ async function main() {
         outdir,
         timeout: TIMEOUT_MS,
         consoleAllow,
+        skipAsserts: SKIP_ASSERTS,
       });
       allFailures.push(...fails);
     }
@@ -337,6 +360,7 @@ async function main() {
         outdir,
         timeout: TIMEOUT_MS,
         consoleAllow,
+        skipAsserts: SKIP_ASSERTS,
       });
       allFailures.push(...fails);
     }

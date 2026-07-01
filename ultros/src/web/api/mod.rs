@@ -8,6 +8,7 @@ mod item_stats;
 mod market_heat;
 mod market_pulse;
 mod movers;
+pub(crate) mod profiles;
 pub(crate) mod push;
 pub(crate) mod real_time_data;
 mod recent_sales;

@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ultros-postgres
+    restart: unless-stopped
+    shm_size: 4g
+    environment:
+      POSTGRES_USER: ultros
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ultros
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  ultros:
+    image: ghcr.io/hpfariz/ffxiv-market:main
+    container_name: ultros-app
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - clickhouse
+    environment:
+      - DATABASE_URL=postgres://ultros:${POSTGRES_PASSWORD}@postgres:5432/ultros
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_CLIENT_ID=${DISCORD_CLIENT_ID}
+      - DISCORD_CLIENT_SECRET=${DISCORD_CLIENT_SECRET}
+      - HOSTNAME=${HOSTNAME}
+      - KEY=${KEY}
+      - PORT=3000
+      - CLICKHOUSE_URL=http://clickhouse:8123
+      - CLICKHOUSE_DATABASE=${CLICKHOUSE_DATABASE}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+      - POSTGRES_MAX_CONNECTIONS=${POSTGRES_MAX_CONNECTIONS-50}
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    container_name: ultros-clickhouse
+    restart: unless-stopped
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_data:
+  clickhouse_data:
+  clickhouse_logs:

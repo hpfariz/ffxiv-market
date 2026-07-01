@@ -12,6 +12,7 @@ pub(crate) mod static_files;
 
 use anyhow::Error;
 use axum::extract::{Path, Query, State};
+use axum::handler::Handler;
 use axum::http::HeaderValue;
 use axum::response::{IntoResponse, Redirect};
 use axum::routing::{delete, get, post};
@@ -206,7 +207,7 @@ async fn add_retainer(
     let _register_retainer = db
         .register_retainer(retainer_id, current_user.id, current_user.name)
         .await?;
-    Ok(Redirect::to("/retainers/edit"))
+    Ok(Redirect::to("/market/retainers/edit"))
 }
 
 async fn remove_owned_retainer(
@@ -216,7 +217,7 @@ async fn remove_owned_retainer(
 ) -> Result<Redirect, WebError> {
     db.remove_owned_retainer(current_user.id, retainer_id)
         .await?;
-    Ok(Redirect::to("/retainers/edit"))
+    Ok(Redirect::to("/market/retainers/edit"))
 }
 
 #[tracing::instrument(skip(db, world_cache))]
@@ -359,7 +360,7 @@ async fn refresh_world_item_listings(
         Ok(())
     });
     let _ = timeout(Duration::from_secs(1), future).await?;
-    Ok(Redirect::to(&format!("/item/{world}/{item_id}")))
+    Ok(Redirect::to(&format!("/market/item/{world}/{item_id}")))
 }
 
 pub(crate) use self::state::WebState;
@@ -1382,7 +1383,7 @@ async fn delete_user(
     let cookie_jar = cookie_jar.remove(Cookie::from("discord_auth"));
     // remove the token from the cache
     // remove the auth cookie from the cache
-    Ok((cookie_jar, Redirect::to("/")))
+    Ok((cookie_jar, Redirect::to("/market")))
 }
 
 async fn get_xiv_data_bytes(
@@ -1416,7 +1417,7 @@ async fn detect_region(region: Option<Region>) -> impl IntoResponse {
 }
 
 async fn listings_redirect(Path((world, id)): Path<(String, i32)>) -> Redirect {
-    Redirect::permanent(&format!("/item/{world}/{id}"))
+    Redirect::permanent(&format!("/market/item/{world}/{id}"))
 }
 
 /// Returns the test-only auth routes when the `test-auth` feature is enabled;
@@ -1431,12 +1432,77 @@ fn test_auth_routes() -> Router<WebState> {
     Router::new()
 }
 
+async fn fallback_filter(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let path = req.uri().path();
+    if path == "/market" || path.starts_with("/market/") {
+        next.run(req).await
+    } else {
+        axum::response::Response::builder()
+            .status(axum::http::StatusCode::NOT_FOUND)
+            .header(
+                axum::http::header::CONTENT_TYPE,
+                "text/plain; charset=utf-8",
+            )
+            .body(axum::body::Body::from("404 Not Found"))
+            .unwrap()
+    }
+}
+
 pub(crate) async fn start_web(state: WebState) {
     // build our application with a route
     let worlds = state.world_helper.clone();
     let token = state.token.clone();
     let app = Router::new()
         .route("/alerts/websocket", get(connect_websocket))
+        // Profiles
+        .route(
+            "/api/v1/profiles",
+            get(crate::web::api::profiles::list_profiles)
+                .post(crate::web::api::profiles::create_profile),
+        )
+        .route(
+            "/api/v1/profiles/{id}",
+            get(crate::web::api::profiles::get_profile)
+                .put(crate::web::api::profiles::update_profile)
+                .delete(crate::web::api::profiles::delete_profile),
+        )
+        .route(
+            "/api/v1/profiles/{id}/levels",
+            get(crate::web::api::profiles::get_job_levels)
+                .put(crate::web::api::profiles::save_job_levels),
+        )
+        .route(
+            "/api/v1/profiles/{id}/settings/arbitrage",
+            get(crate::web::api::profiles::get_arbitrage_settings)
+                .put(crate::web::api::profiles::update_arbitrage_settings),
+        )
+        .route(
+            "/api/v1/profiles/{id}/settings/crafting",
+            get(crate::web::api::profiles::get_crafting_settings)
+                .put(crate::web::api::profiles::update_crafting_settings),
+        )
+        .route(
+            "/api/v1/profiles/{id}/settings/gathering",
+            get(crate::web::api::profiles::get_gathering_settings)
+                .put(crate::web::api::profiles::update_gathering_settings),
+        )
+        .route(
+            "/api/v1/profiles/{id}/arbitrage",
+            get(crate::web::api::profiles::get_arbitrage_opportunities),
+        )
+        .route(
+            "/api/v1/profiles/{id}/crafting",
+            get(crate::web::api::profiles::get_crafting_opportunities),
+        )
+        .route(
+            "/api/v1/profiles/{id}/gathering",
+            get(crate::web::api::profiles::get_gathering_routes),
+        )
+        .route("/api/v1/health", get(crate::web::api::profiles::get_health))
+        .route("/api/v1/events", get(crate::web::api::profiles::get_events))
         .route("/api/v1/search", get(search))
         .route("/api/v1/realtime/events", get(real_time_data))
         .route("/api/v1/cheapest/{world}", get(cheapest_per_world))
@@ -1580,17 +1646,17 @@ pub(crate) async fn start_web(state: WebState) {
         .route("/listings/{world}/{item}", get(listings_redirect))
         .merge(test_auth_routes())
         .merge(create_leptos_app(state.world_helper.clone()).await.unwrap())
-        .fallback(leptos_axum::file_and_error_handler_with_context::<
-            WebState,
-            _,
-        >(
-            move || {
-                provide_context(LocalWorldData(Ok(worlds.clone())));
-            },
-            // The file/404 fallback doesn't have per-request bootstrap data; an
-            // empty script tag is harmless and the client falls back to HTTP.
-            |options| shell(options, String::new()),
-        ))
+        .fallback(
+            leptos_axum::file_and_error_handler_with_context::<WebState, _>(
+                move || {
+                    provide_context(LocalWorldData(Ok(worlds.clone())));
+                },
+                // The file/404 fallback doesn't have per-request bootstrap data; an
+                // empty script tag is harmless and the client falls back to HTTP.
+                |options| shell(options, String::new()),
+            )
+            .layer(axum::middleware::from_fn(fallback_filter)),
+        )
         .with_state(state)
         .route_layer(middleware::from_fn(track_metrics))
         .layer(middleware::from_fn(redirect_legacy_book_host))

@@ -43,7 +43,7 @@ fn set_total(group: &JobSetGroup, prices: &CheapestListingsMap, hq_only: bool) -
 /// changes in a future patch.
 fn detail_href(jobset: &str, group: &JobSetGroup) -> String {
     format!(
-        "/items/jobset/{}/set/{}",
+        "/market/items/jobset/{}/set/{}",
         jobset.replace('/', "%2F"),
         group.ilvl
     )
@@ -94,7 +94,10 @@ mod tests {
             ilvl: 770,
             items: vec![item(1, "Courtly Lover's Sword")],
         };
-        assert_eq!(detail_href("PLD", &group), "/items/jobset/PLD/set/770");
+        assert_eq!(
+            detail_href("PLD", &group),
+            "/market/items/jobset/PLD/set/770"
+        );
     }
 
     #[test]
@@ -108,7 +111,10 @@ mod tests {
             ilvl: 1,
             items: vec![item(1, "x")],
         };
-        assert_eq!(detail_href("a/b", &group), "/items/jobset/a%2Fb/set/1");
+        assert_eq!(
+            detail_href("a/b", &group),
+            "/market/items/jobset/a%2Fb/set/1"
+        );
     }
 
     #[test]
@@ -233,7 +239,7 @@ pub fn JobSetCard(group: JobSetGroup, jobset: String) -> impl IntoView {
                     let title = item.name.clone();
                     view! {
                         <A
-                            href=format!("/item/{}", id)
+                            href=format!("/market/item/{}", id)
                             attr:class="flex items-center justify-center aspect-square rounded bg-white/5 hover:bg-white/10 \
                                        border border-white/5 hover:border-brand-500/30 \
                                        transition-colors p-0.5"

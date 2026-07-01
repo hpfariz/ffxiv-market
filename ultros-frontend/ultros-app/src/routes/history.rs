@@ -76,7 +76,7 @@ pub fn History() -> impl IntoView {
                                                                 .get(&ItemId(item_id));
 
                                                             view! {
-                                                                <A href=format!("/item/{item_id}")>
+                                                                <A href=format!("/market/item/{item_id}")>
                                                                     <div class="flex items-center gap-4 p-3 card transition-colors duration-200 hover:translate-x-1">
                                                                         <ItemIcon item_id icon_size=IconSize::Medium />
 

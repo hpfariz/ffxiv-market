@@ -64,10 +64,8 @@ pub async fn get_trends(
             7 | 30 | 90 => raw_window,
             _ => 30,
         };
-        let include_suspicious = match query.show_suspicious.as_deref() {
-            Some("true") | Some("1") => true,
-            _ => false,
-        };
+        let include_suspicious =
+            matches!(query.show_suspicious.as_deref(), Some("true") | Some("1"));
         let items = analyzer
             .get_trends_v2(world_id, window_days, include_suspicious)
             .await

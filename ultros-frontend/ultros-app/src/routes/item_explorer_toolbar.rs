@@ -129,7 +129,7 @@ pub fn ItemExplorerToolbar() -> impl IntoView {
                             .map(|job| {
                                 let label = job_chip_label(job).to_string();
                                 let href = format!(
-                                    "/items/jobset/{}",
+                                    "/market/items/jobset/{}",
                                     label.replace('/', "%2F")
                                 );
                                 let job_id = job.key_id;
@@ -146,7 +146,7 @@ pub fn ItemExplorerToolbar() -> impl IntoView {
                             .into_iter()
                             .map(|(name, id)| {
                                 let href = format!(
-                                    "/items/category/{}",
+                                    "/market/items/category/{}",
                                     name.replace('/', "%2F")
                                 );
                                 view! {

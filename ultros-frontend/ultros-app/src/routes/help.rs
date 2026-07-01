@@ -315,7 +315,7 @@ pub fn HelpIndex() -> impl IntoView {
                 </section>
                 <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {HELP_TOPICS.iter().map(|topic| view! {
-                        <A href=format!("/help/{}", topic.slug) attr:class="panel p-5 rounded-xl hover:border-brand-300 transition-colors flex flex-col gap-2">
+                        <A href=format!("/market/help/{}", topic.slug) attr:class="panel p-5 rounded-xl hover:border-brand-300 transition-colors flex flex-col gap-2">
                             <span class="text-xs uppercase tracking-wide text-brand-300 font-bold">{topic.category}</span>
                             <h2 class="text-xl font-bold text-[color:var(--brand-fg)]">{topic.title}</h2>
                             <p class="text-sm text-[color:var(--color-text-muted)]">{topic.summary}</p>
@@ -344,7 +344,7 @@ pub fn HelpArticle() -> impl IntoView {
                     Some(topic) => view! {
                         <MetaTitle title=format!("{} - Ultros Help", topic.title) />
                         <MetaDescription text=topic.summary />
-                        <A href="/help" attr:class="text-sm text-brand-300 hover:text-[color:var(--brand-fg)] inline-flex items-center gap-2">
+                        <A href="/market/help" attr:class="text-sm text-brand-300 hover:text-[color:var(--brand-fg)] inline-flex items-center gap-2">
                             <Icon icon=i::FaArrowLeftSolid width="0.85em" height="0.85em" />
                             {t!(i18n, help_all_topics_link)}
                         </A>
@@ -366,7 +366,7 @@ pub fn HelpArticle() -> impl IntoView {
                         <section class="panel p-6 rounded-2xl text-center">
                             <h1 class="text-2xl font-bold text-[color:var(--brand-fg)]">{t!(i18n, help_not_found_heading)}</h1>
                             <p class="mt-2 text-[color:var(--color-text-muted)]">{t!(i18n, help_not_found_body)}</p>
-                            <A href="/help" attr:class="btn-primary mt-4">{t!(i18n, help_browse_link)}</A>
+                            <A href="/market/help" attr:class="btn-primary mt-4">{t!(i18n, help_browse_link)}</A>
                         </section>
                     }.into_any(),
                 }}

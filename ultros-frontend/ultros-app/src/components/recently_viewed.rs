@@ -114,9 +114,9 @@ fn TrackedRow(item_id: i32, world_name: String, series: Option<SparklineSeries>)
     // The /item/{world}/{id} route is the canonical product page when we
     // have a world. Without a world, fall back to /item/{id}.
     let href = if world_name.is_empty() {
-        format!("/item/{item_id}")
+        format!("/market/item/{item_id}")
     } else {
-        format!("/item/{world_name}/{item_id}")
+        format!("/market/item/{world_name}/{item_id}")
     };
 
     view! {
@@ -255,14 +255,12 @@ pub fn RecentlyViewed() -> impl IntoView {
                         }}
                     </div>
 
-                    <div class="text-right pt-2">
-                        <a
-                            href="/history"
-                            class="text-xs text-[color:var(--color-text-muted)] hover:text-[color:var(--accent)] transition-colors"
+                        <A
+                            href="/market/history"
+                            attr:class="text-xs text-[color:var(--color-text-muted)] hover:text-[color:var(--accent)] transition-colors"
                         >
                             {t!(i18n, recently_viewed_view_all)}
-                        </a>
-                    </div>
+                        </A>
                 </div>
             </Suspense>
         </div>

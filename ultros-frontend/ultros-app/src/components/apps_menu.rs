@@ -68,8 +68,8 @@ pub fn AppsMenu() -> impl IntoView {
                     <div class="p-2 flex flex-col gap-1">
                         <A
                             href=homeworld()
-                                .map(|w| format!("/flip-finder/{}", w.name))
-                                .unwrap_or("/flip-finder".to_string())
+                                .map(|w| format!("/market/flip-finder/{}", w.name))
+                                .unwrap_or("/market/flip-finder".to_string())
                             attr:class="nav-link w-full justify-start"
                             on:click=close_menu
                         >
@@ -79,8 +79,8 @@ pub fn AppsMenu() -> impl IntoView {
 
                         <A
                             href=homeworld()
-                                .map(|w| format!("/vendor-resale/{}", w.name))
-                                .unwrap_or("/vendor-resale".to_string())
+                                .map(|w| format!("/market/vendor-resale/{}", w.name))
+                                .unwrap_or("/market/vendor-resale".to_string())
                             attr:class="nav-link w-full justify-start"
                             on:click=close_menu
                         >
@@ -90,8 +90,8 @@ pub fn AppsMenu() -> impl IntoView {
 
                         <A
                             href=homeworld()
-                                .map(|w| format!("/recipe-analyzer?world={}", w.name))
-                                .unwrap_or("/recipe-analyzer".to_string())
+                                .map(|w| format!("/market/recipe-analyzer?world={}", w.name))
+                                .unwrap_or("/market/recipe-analyzer".to_string())
                             attr:class="nav-link w-full justify-start"
                             on:click=close_menu
                         >
@@ -101,8 +101,8 @@ pub fn AppsMenu() -> impl IntoView {
 
                         <A
                             href=homeworld()
-                                .map(|w| format!("/fc-crafting-analyzer/{}", w.name))
-                                .unwrap_or("/fc-crafting-analyzer".to_string())
+                                .map(|w| format!("/market/fc-crafting-analyzer/{}", w.name))
+                                .unwrap_or("/market/fc-crafting-analyzer".to_string())
                             attr:class="nav-link w-full justify-start"
                             on:click=close_menu
                         >
@@ -112,8 +112,8 @@ pub fn AppsMenu() -> impl IntoView {
 
                         <A
                             href=homeworld()
-                                .map(|w| format!("/leve-analyzer?world={}", w.name))
-                                .unwrap_or("/leve-analyzer".to_string())
+                                .map(|w| format!("/market/leve-analyzer?world={}", w.name))
+                                .unwrap_or("/market/leve-analyzer".to_string())
                             attr:class="nav-link w-full justify-start"
                             on:click=close_menu
                         >
@@ -123,8 +123,8 @@ pub fn AppsMenu() -> impl IntoView {
 
                         <A
                             href=homeworld()
-                                .map(|w| format!("/trends/{}", w.name))
-                                .unwrap_or("/trends".to_string())
+                                .map(|w| format!("/market/trends/{}", w.name))
+                                .unwrap_or("/market/trends".to_string())
                             attr:class="nav-link w-full justify-start"
                             on:click=close_menu
                         >
@@ -133,8 +133,8 @@ pub fn AppsMenu() -> impl IntoView {
                         </A>
                         <A
                             href=homeworld()
-                                .map(|w| format!("/scrip-sources?world={}", w.name))
-                                .unwrap_or("/scrip-sources".to_string())
+                                .map(|w| format!("/market/scrip-sources?world={}", w.name))
+                                .unwrap_or("/market/scrip-sources".to_string())
                             attr:class="nav-link w-full justify-start"
                             on:click=close_menu
                         >
@@ -144,8 +144,8 @@ pub fn AppsMenu() -> impl IntoView {
 
                         <A
                             href=homeworld()
-                                .map(|w| format!("/venture-analyzer?world={}", w.name))
-                                .unwrap_or("/venture-analyzer".to_string())
+                                .map(|w| format!("/market/venture-analyzer?world={}", w.name))
+                                .unwrap_or("/market/venture-analyzer".to_string())
                             attr:class="nav-link w-full justify-start"
                             on:click=move |_| set_has_focus(false)
                         >
@@ -154,7 +154,7 @@ pub fn AppsMenu() -> impl IntoView {
                         </A>
 
                         <A
-                            href="/items"
+                            href="/market/items"
                             attr:class="nav-link w-full justify-start"
                             on:click=close_menu
                         >
@@ -163,7 +163,7 @@ pub fn AppsMenu() -> impl IntoView {
                         </A>
 
                         <A
-                            href="/currency-exchange"
+                            href="/market/currency-exchange"
                             attr:class="nav-link w-full justify-start"
                             on:click=close_menu
                         >
@@ -268,30 +268,30 @@ pub fn UserMenu() -> impl IntoView {
                                 match u {
                                     Some(_auth) => {
                                         view! {
-                                            <A href="/profile" attr:class="nav-link w-full justify-start" on:click=close_menu>
+                                            <A href="/market/profile" attr:class="nav-link w-full justify-start" on:click=close_menu>
                                                 <Icon height="1.1em" width="1.1em" icon=i::BsPersonCircle />
                                                 <span class="ml-2">{t!(i18n, profile)}</span>
                                             </A>
-                                            <A href="/settings" attr:class="nav-link w-full justify-start" on:click=close_menu>
+                                            <A href="/market/settings" attr:class="nav-link w-full justify-start" on:click=close_menu>
                                                 <Icon height="1.1em" width="1.1em" icon=i::IoSettingsSharp />
                                                 <span class="ml-2">{t!(i18n, settings)}</span>
                                             </A>
 
                         <div class="divider my-1"></div>
 
-                                            <A href="/list" attr:class="nav-link w-full justify-start" on:click=close_menu>
+                                             <A href="/market/list" attr:class="nav-link w-full justify-start" on:click=close_menu>
                                                 <Icon height="1.1em" width="1.1em" icon=i::AiOrderedListOutlined />
                                                 <span class="ml-2">{t!(i18n, lists)}</span>
                                             </A>
-                                            <A href="/groups" attr:class="nav-link w-full justify-start" on:click=close_menu>
+                                            <A href="/market/groups" attr:class="nav-link w-full justify-start" on:click=close_menu>
                                                 <Icon height="1.1em" width="1.1em" icon=i::BiGroupSolid />
                                                 <span class="ml-2">{t!(i18n, groups)}</span>
                                             </A>
-                                            <A href="/alerts" attr:class="nav-link w-full justify-start" on:click=close_menu>
+                                            <A href="/market/alerts" attr:class="nav-link w-full justify-start" on:click=close_menu>
                                                 <Icon height="1.1em" width="1.1em" icon=i::BsBell />
                                                 <span class="ml-2">{t!(i18n, alerts)}</span>
                                             </A>
-                                            <A href="/retainers/listings" attr:class="nav-link w-full justify-start" on:click=close_menu>
+                                            <A href="/market/retainers/listings" attr:class="nav-link w-full justify-start" on:click=close_menu>
                                                 <Icon height="1.1em" width="1.1em" icon=i::BiGroupSolid />
                                                 <span class="ml-2">{t!(i18n, retainers)}</span>
                                             </A>
@@ -320,7 +320,7 @@ pub fn UserMenu() -> impl IntoView {
                                                 <Icon height="1.1em" width="1.1em" icon=i::BsDiscord />
                                                 <span class="ml-2">{t!(i18n, login_with_discord)}</span>
                                             </a>
-                                            <A href="/settings" attr:class="nav-link w-full justify-start" on:click=close_menu>
+                                            <A href="/market/settings" attr:class="nav-link w-full justify-start" on:click=close_menu>
                                                 <Icon height="1.1em" width="1.1em" icon=i::IoSettingsSharp />
                                                 <span class="ml-2">{t!(i18n, settings)}</span>
                                             </A>

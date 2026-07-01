@@ -620,7 +620,7 @@ fn ItemList(items: Memo<Vec<(&'static ItemId, &'static Item)>>) -> impl IntoView
                                         transition-all duration-300">
                                 <div class="flex flex-row items-start gap-4 mb-4">
                                     <div class="shrink-0 relative">
-                                         <A href=move || format!("/item/{}/{}",
+                                         <A href=move || format!("/market/item/{}/{}",
                                             price_zone.get().as_ref().map(|z| z.get_name()).unwrap_or("North-America"),
                                             item.key_id.0)
                                          >
@@ -642,7 +642,7 @@ fn ItemList(items: Memo<Vec<(&'static ItemId, &'static Item)>>) -> impl IntoView
                                                 view! { <span/> }.into_any()
                                             }}
                                         </div>
-                                        <A href=move || format!("/item/{}/{}",
+                                        <A href=move || format!("/market/item/{}/{}",
                                             price_zone.get().as_ref().map(|z| z.get_name()).unwrap_or("North-America"),
                                             item.key_id.0)
                                             attr:class="font-bold text-base leading-snug text-[color:var(--color-text)] \

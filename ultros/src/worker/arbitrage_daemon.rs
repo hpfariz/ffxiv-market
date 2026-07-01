@@ -1,13 +1,19 @@
 use std::sync::Arc;
 use std::time::Duration;
+
+use chrono::{NaiveDateTime, Utc};
+use sea_orm::{
+    ColumnTrait, DbBackend, EntityTrait, FromQueryResult, PaginatorTrait, QueryFilter, QuerySelect,
+    Statement,
+};
 use tokio::sync::Notify;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, instrument};
 use ultros_db::UltrosDb;
-use ultros_db::entity::{player_profile, arbitrage_opportunity, active_listing, sale_history, world};
-use sea_orm::{EntityTrait, QueryFilter, ColumnTrait, QuerySelect, FromQueryResult, PaginatorTrait, DbBackend, Statement};
-use chrono::{Utc, NaiveDateTime};
+use ultros_db::entity::{
+    active_listing, arbitrage_opportunity, player_profile, sale_history, world,
+};
 
 pub struct ArbitrageDaemon {
     db: UltrosDb,
@@ -24,11 +30,6 @@ struct CandidateOpportunity {
     dest_price: i32,
     source_qty: i32,
     source_timestamp: NaiveDateTime,
-}
-
-#[derive(FromQueryResult)]
-struct ActiveListCount {
-    count: i64,
 }
 
 #[derive(FromQueryResult)]
@@ -51,14 +52,14 @@ impl ArbitrageDaemon {
                     _ = trigger.notified() => {
                         // Debounce trigger: wait 30s to let batches settle
                         sleep(Duration::from_secs(30)).await;
-                        
+
                         // Limit frequency: run at most once every 2 minutes
                         let start_time = tokio::time::Instant::now();
-                        
+
                         if let Err(e) = run_arbitrage_scan(&db).await {
                             error!(error = ?e, "Arbitrage scan failed");
                         }
-                        
+
                         let elapsed = start_time.elapsed();
                         if elapsed < Duration::from_secs(120) {
                             sleep(Duration::from_secs(120) - elapsed).await;
@@ -77,9 +78,9 @@ impl ArbitrageDaemon {
 #[instrument(skip(db))]
 async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
     info!("Running DC-wide arbitrage scan for all profiles");
-    let profiles = player_profile::Entity::find().all(db.get_connection()).await?;
-    let worlds = world::Entity::find().all(db.get_connection()).await?;
-    let world_map: std::collections::HashMap<i32, String> = worlds.into_iter().map(|w| (w.id, w.name)).collect();
+    let profiles = player_profile::Entity::find()
+        .all(db.get_connection())
+        .await?;
 
     for profile in profiles {
         let settings = db.get_arbitrage_settings(profile.id).await?;
@@ -167,7 +168,9 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
 
         for cand in candidates {
             // Apply world exclusions
-            if excluded_worlds.contains(&cand.source_world_id) || excluded_worlds.contains(&cand.dest_world_id) {
+            if excluded_worlds.contains(&cand.source_world_id)
+                || excluded_worlds.contains(&cand.dest_world_id)
+            {
                 continue;
             }
 
@@ -184,7 +187,9 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
 
             // Category filters
             let search_category = item.item_search_category;
-            if !allowlisted_categories.is_empty() && !allowlisted_categories.contains(&search_category) {
+            if !allowlisted_categories.is_empty()
+                && !allowlisted_categories.contains(&search_category)
+            {
                 continue;
             }
             if blocklisted_categories.contains(&search_category) {
@@ -248,7 +253,8 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
             // Gate 4 — Capital Check
             let over_budget = total_cost > profile.gil_balance;
 
-            let listing_age_seconds = Utc::now().naive_utc()
+            let listing_age_seconds = Utc::now()
+                .naive_utc()
                 .signed_duration_since(cand.source_timestamp)
                 .num_seconds();
 
@@ -271,8 +277,12 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
         }
 
         // Save opportunities cache to database
-        db.save_arbitrage_opportunities(profile.id, opportunities).await?;
-        info!("Saved arbitrage opportunities for profile {}", profile.display_name);
+        db.save_arbitrage_opportunities(profile.id, opportunities)
+            .await?;
+        info!(
+            "Saved arbitrage opportunities for profile {}",
+            profile.display_name
+        );
     }
 
     Ok(())
@@ -280,15 +290,9 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
 
 fn estimate_travel_time(home_world: i32, source_world: i32, dest_world: i32) -> i64 {
     if source_world == dest_world {
-        if source_world == home_world {
-            0
-        } else {
-            2
-        }
+        if source_world == home_world { 0 } else { 2 }
     } else {
-        if source_world == home_world {
-            2
-        } else if dest_world == home_world {
+        if source_world == home_world || dest_world == home_world {
             2
         } else {
             4

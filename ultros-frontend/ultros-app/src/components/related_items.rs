@@ -257,7 +257,7 @@ fn Recipe(recipe: &'static Recipe, item_id: ItemId) -> impl IntoView {
         let (opts, _) = cookies.use_cookie_typed::<_, CraftOptions>(craft_options::COOKIE_NAME);
         let o = opts.get().unwrap_or_default();
         format!(
-            "/recipe-analyzer?job={job}&require-hq={hq}&subcrafts={sub}&shards-exclude={shards}&on-hand={oh}",
+            "/market/recipe-analyzer?job={job}&require-hq={hq}&subcrafts={sub}&shards-exclude={shards}&on-hand={oh}",
             job = job,
             hq = o.require_hq,
             sub = o.include_subcrafts,
@@ -792,7 +792,7 @@ pub fn RelatedItems(#[prop(into)] item_id: Signal<i32>) -> impl IntoView {
                         exact=true
                         href=move || {
                             format!(
-                                "/item/{}/{}",
+                                "/market/item/{}/{}",
                                 price_zone()
                                     .as_ref()
                                     .map(|z| z.get_name())
@@ -841,7 +841,7 @@ pub fn RelatedItems(#[prop(into)] item_id: Signal<i32>) -> impl IntoView {
                                             exact=true
                                             href=move || {
                                                 format!(
-                                                    "/item/{}/{}",
+                                                    "/market/item/{}/{}",
                                                     price_zone()
                                                         .as_ref()
                                                         .map(|z| z.get_name())

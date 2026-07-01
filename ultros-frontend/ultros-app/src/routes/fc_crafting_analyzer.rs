@@ -540,14 +540,14 @@ fn FCCraftingAnalyzerTable(
                                     <div class="flex flex-row items-center gap-2 min-w-0 w-full">
                                         <a
                                             class="shrink-0 hover:text-brand-300 transition-colors"
-                                            href=format!("/item/{}/{}", world(), item_id.0)
+                                            href=format!("/market/item/{}/{}", world(), item_id.0)
                                         >
                                             <ItemIcon item_id=item_id.0 icon_size=IconSize::Small />
                                         </a>
                                         <div class="flex flex-col min-w-0">
                                             <a
                                                 class="truncate hover:text-brand-300 transition-colors"
-                                                href=format!("/item/{}/{}", world(), item_id.0)
+                                                href=format!("/market/item/{}/{}", world(), item_id.0)
                                             >
                                                 {item}
                                             </a>
@@ -639,7 +639,7 @@ pub fn FCCraftingAnalyzer() -> impl IntoView {
                     title=t_string!(i18n, fc_crafting_analyzer_title).to_string()
                     summary=t_string!(i18n, fc_crafting_tool_summary).to_string()
                     context=t_string!(i18n, fc_crafting_tool_context).to_string()
-                    help_href="/help/fc-crafting"
+                    help_href="/market/help/fc-crafting"
                     help_body=t_string!(i18n, fc_crafting_tool_help).to_string()
                 />
                  <div class="flex flex-row justify-end items-center">

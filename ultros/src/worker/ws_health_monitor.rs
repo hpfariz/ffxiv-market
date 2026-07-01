@@ -1,3 +1,5 @@
+use chrono::{NaiveDateTime, Utc};
+use sea_orm::{ColumnTrait, EntityTrait, FromQueryResult, QuerySelect};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
@@ -6,8 +8,6 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, instrument};
 use ultros_db::UltrosDb;
 use ultros_db::entity::active_listing;
-use sea_orm::{EntityTrait, ColumnTrait, QuerySelect, FromQueryResult};
-use chrono::{Utc, NaiveDateTime};
 
 #[derive(Clone, Debug, serde::Serialize)]
 pub enum FeedEvent {
@@ -39,7 +39,8 @@ impl WsHealthMonitor {
     }
 
     pub fn set_connected(&self, connected: bool) {
-        self.is_socket_connected.store(connected, std::sync::atomic::Ordering::Relaxed);
+        self.is_socket_connected
+            .store(connected, std::sync::atomic::Ordering::Relaxed);
         let event = if connected {
             FeedEvent::Healthy
         } else {
@@ -83,7 +84,10 @@ impl WsHealthMonitor {
     #[instrument(skip(self))]
     async fn check_health(&self) -> Result<(), anyhow::Error> {
         // If the socket itself is disconnected, report that immediately
-        if !self.is_socket_connected.load(std::sync::atomic::Ordering::Relaxed) {
+        if !self
+            .is_socket_connected
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
             let _ = self.event_tx.send(FeedEvent::Disconnected);
             return Ok(());
         }

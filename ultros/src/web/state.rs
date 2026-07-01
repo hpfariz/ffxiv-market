@@ -37,6 +37,8 @@ pub(crate) struct WebState {
     /// ClickHouse client for analytical queries (Phase 1+ uses this; Phase 0
     /// only writes via the analyzer's dual-write path).
     pub(crate) ch_client: ClickHouseClient,
+    pub(crate) arbitrage_trigger: Arc<tokio::sync::Notify>,
+    pub(crate) health_monitor: Arc<crate::worker::ws_health_monitor::WsHealthMonitor>,
 }
 
 impl FromRef<WebState> for UltrosDb {
@@ -114,5 +116,17 @@ impl FromRef<WebState> for SearchService {
 impl FromRef<WebState> for ClickHouseClient {
     fn from_ref(input: &WebState) -> Self {
         input.ch_client.clone()
+    }
+}
+
+impl FromRef<WebState> for Arc<tokio::sync::Notify> {
+    fn from_ref(input: &WebState) -> Self {
+        input.arbitrage_trigger.clone()
+    }
+}
+
+impl FromRef<WebState> for Arc<crate::worker::ws_health_monitor::WsHealthMonitor> {
+    fn from_ref(input: &WebState) -> Self {
+        input.health_monitor.clone()
     }
 }

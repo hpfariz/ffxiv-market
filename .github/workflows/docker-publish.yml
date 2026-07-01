@@ -66,7 +66,7 @@ jobs:
               uses: docker/build-push-action@v6
               with:
                   context: .
-                  platforms: linux/amd64
+                  platforms: linux/arm64
                   push: ${{ github.event_name != 'pull_request' }}
                   tags: ${{ steps.meta.outputs.tags }}
                   labels: ${{ steps.meta.outputs.labels }}
@@ -138,3 +138,30 @@ jobs:
                   chmod +x "$CLI"
                   "$CLI" --version
                   "$CLI" debug-files upload ./debug
+
+    deploy:
+        needs: build
+        runs-on: ubuntu-latest
+        if: github.event_name != 'pull_request'
+
+        steps:
+            - name: Deploy to production server
+              env:
+                  DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+                  DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+                  DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+              run: |
+                  set -euo pipefail
+
+                  if [ -z "${DEPLOY_HOST}" ] || [ -z "${DEPLOY_USER}" ] || [ -z "${DEPLOY_SSH_KEY}" ]; then
+                      echo "::error::DEPLOY_HOST, DEPLOY_USER, and DEPLOY_SSH_KEY repository secrets must be set."
+                      exit 1
+                  fi
+
+                  install -m 700 -d ~/.ssh
+                  printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+                  chmod 600 ~/.ssh/deploy_key
+                  ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+                  ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+                      'cd /home/ubuntu/apps/ffxiv-market && docker compose pull ultros && docker compose up -d ultros'

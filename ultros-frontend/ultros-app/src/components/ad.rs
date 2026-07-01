@@ -15,9 +15,17 @@ pub fn Ad(#[prop(optional)] class: Option<&'static str>) -> impl IntoView {
     let cookies = use_context::<Cookies>().unwrap();
     let (hide_ads, _) = cookies.use_cookie_typed::<_, bool>("HIDE_ADS");
     let unfilled = RwSignal::new(false);
+    let is_cleaned_up = StoredValue::new(false);
+    on_cleanup(move || {
+        is_cleaned_up.set_value(true);
+    });
+
     let _mutation_observer = use_mutation_observer_with_options(
         node,
         move |mutations, _| {
+            if is_cleaned_up.get_value() {
+                return;
+            }
             if let Some(_ad_fill_status) = mutations.into_iter().find(|record| {
                 record
                     .attribute_name()
@@ -25,10 +33,13 @@ pub fn Ad(#[prop(optional)] class: Option<&'static str>) -> impl IntoView {
                     .unwrap_or_default()
             }) {
                 // just looking for data-ad-status="unfilled"
-                let node = node.get_untracked().unwrap();
-                if let Some(status) = node.deref().get_attribute("data-ad-status") {
+                if let Some(node) = node.get_untracked()
+                    && let Some(status) = node.deref().get_attribute("data-ad-status")
+                {
                     info!("ad status {status}");
-                    unfilled.set(status == "unfilled");
+                    let _ = unfilled.try_update(|val| {
+                        *val = status == "unfilled";
+                    });
                 }
             }
         },
@@ -46,7 +57,14 @@ pub fn Ad(#[prop(optional)] class: Option<&'static str>) -> impl IntoView {
                         async
                         src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8789160460804755"
                         crossorigin="anonymous"
-                        on:error=move |_e| unfilled.set(true)
+                        on:error=move |_e| {
+                            if is_cleaned_up.get_value() {
+                                return;
+                            }
+                            let _ = unfilled.try_update(|val| {
+                                *val = true;
+                            });
+                        }
                     ></script>
                     // <!-- Ultros-Ad-Main -->
                     <ins
@@ -60,7 +78,7 @@ pub fn Ad(#[prop(optional)] class: Option<&'static str>) -> impl IntoView {
                     <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
                     <span class="text-neutral-500 italic text-sm">
                         "ads are optional. you may disable or enable them under "
-                        <A href="/settings">{t!(i18n, ad_settings_link)}</A>
+                        <A href="/market/settings">{t!(i18n, ad_settings_link)}</A>
                     </span>
                 </div>
             </div>

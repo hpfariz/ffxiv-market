@@ -36,7 +36,7 @@ pub fn SmallItemDisplay(item: &'static Item) -> impl IntoView {
                             exact=true
                             href=move || {
                                 format!(
-                                    "/item/{}/{}",
+                                    "/market/item/{}/{}",
                                     price_zone()
                                         .as_ref()
                                         .map(|z| z.get_name())

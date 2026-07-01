@@ -120,6 +120,8 @@ define_id!(CompanyCraftSupplyItemId);
 define_id!(CompanyCraftDraftCategoryId);
 define_id!(CompanyCraftTypeId);
 define_id!(CompanyCraftDraftId);
+define_id!(GatheringItemId);
+define_id!(GatheringPointBaseId);
 
 #[derive(
     Debug,
@@ -963,6 +965,52 @@ pub struct RecipeLevelTable {
     FromCsv,
 )]
 #[archive(check_bytes)]
+#[xiv_gen(sheet = "GatheringItem")]
+pub struct GatheringItem {
+    #[xiv_gen(column = "#")]
+    pub key_id: GatheringItemId,
+    #[xiv_gen(column = "Item")]
+    pub item: i32,
+    #[xiv_gen(column = "GatheringItemLevel")]
+    pub gathering_item_level: i32,
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Archive,
+    RkyvDeserialize,
+    RkyvSerialize,
+    FromCsv,
+)]
+#[archive(check_bytes)]
+#[xiv_gen(sheet = "GatheringPointBase")]
+pub struct GatheringPointBase {
+    #[xiv_gen(column = "#")]
+    pub key_id: GatheringPointBaseId,
+    #[xiv_gen(column = "GatheringType")]
+    pub gathering_type: i32,
+    #[xiv_gen(column = "GatheringLevel")]
+    pub gathering_level: i32,
+    #[xiv_gen(column = "Item[{}]", count = 8)]
+    pub item: [i32; 8],
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Archive,
+    RkyvDeserialize,
+    RkyvSerialize,
+    FromCsv,
+)]
+#[archive(check_bytes)]
 #[xiv_gen(sheet = "CollectablesShopItem")]
 pub struct CollectablesShopItem {
     #[xiv_gen(column = "#")]
@@ -1065,6 +1113,8 @@ pub struct Data {
     pub collectables_shop_reward_scrips:
         HashMap<CollectablesShopRewardScripId, CollectablesShopRewardScrip>,
     pub craft_leves: HashMap<CraftLeveId, CraftLeve>,
+    pub gathering_items: HashMap<GatheringItemId, GatheringItem>,
+    pub gathering_point_bases: HashMap<GatheringPointBaseId, GatheringPointBase>,
 }
 
 impl HasId for Item {
@@ -1075,6 +1125,18 @@ impl HasId for Item {
 }
 impl HasId for RecipeLevelTable {
     type Id = RecipeLevelTableId;
+    fn get_id(&self) -> Self::Id {
+        self.key_id
+    }
+}
+impl HasId for GatheringItem {
+    type Id = GatheringItemId;
+    fn get_id(&self) -> Self::Id {
+        self.key_id
+    }
+}
+impl HasId for GatheringPointBase {
+    type Id = GatheringPointBaseId;
     fn get_id(&self) -> Self::Id {
         self.key_id
     }

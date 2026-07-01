@@ -33,7 +33,7 @@ pub fn SideNav() -> impl IntoView {
     view! {
         <aside class="side-nav" aria-label=t_string!(i18n, side_nav_aria_primary)>
             <div class="side-nav-brand">
-                <A href="/" attr:class="side-nav-brand-link">
+                <A href="/market" attr:class="side-nav-brand-link">
                     <Icon icon=i::MdiJellyfish width="1.6em" height="1.6em" />
                     <span class="side-nav-brand-text">"ULTROS"</span>
                 </A>
@@ -48,69 +48,69 @@ pub fn SideNav() -> impl IntoView {
             </div>
 
             <nav class="side-nav-sections">
-                <A href="/" exact=true attr:class="side-nav-item">
+                <A href="/market" exact=true attr:class="side-nav-item">
                     <Icon icon=i::AiHomeFilled />
                     <span class="side-nav-label">{t!(i18n, home)}</span>
                 </A>
 
                 <div class="side-nav-section-header">{t!(i18n, side_nav_tools)}</div>
 
-                <A href=with_world("/flip-finder/{world}", "/flip-finder") attr:class="side-nav-item">
+                <A href=with_world("/market/flip-finder/{world}", "/market/flip-finder") attr:class="side-nav-item">
                     <Icon icon=i::FaMoneyBillTrendUpSolid />
                     <span class="side-nav-label">{t!(i18n, flip_finder)}</span>
                 </A>
-                <A href=with_world("/vendor-resale/{world}", "/vendor-resale") attr:class="side-nav-item">
+                <A href=with_world("/market/vendor-resale/{world}", "/market/vendor-resale") attr:class="side-nav-item">
                     <Icon icon=i::FaShopSolid />
                     <span class="side-nav-label">{t!(i18n, vendor_resale)}</span>
                 </A>
-                <A href=with_world("/recipe-analyzer?world={world}", "/recipe-analyzer") attr:class="side-nav-item">
+                <A href=with_world("/market/recipe-analyzer?world={world}", "/market/recipe-analyzer") attr:class="side-nav-item">
                     <Icon icon=i::FaHammerSolid />
                     <span class="side-nav-label">{t!(i18n, recipe_analyzer)}</span>
                 </A>
-                <A href=with_world("/fc-crafting-analyzer/{world}", "/fc-crafting-analyzer") attr:class="side-nav-item">
+                <A href=with_world("/market/fc-crafting-analyzer/{world}", "/market/fc-crafting-analyzer") attr:class="side-nav-item">
                     <Icon icon=i::MdiSubmarine />
                     <span class="side-nav-label">{t!(i18n, fc_crafting)}</span>
                 </A>
-                <A href=with_world("/leve-analyzer?world={world}", "/leve-analyzer") attr:class="side-nav-item">
+                <A href=with_world("/market/leve-analyzer?world={world}", "/market/leve-analyzer") attr:class="side-nav-item">
                     <Icon icon=i::FaScrollSolid />
                     <span class="side-nav-label">{t!(i18n, leve_analyzer)}</span>
                 </A>
-                <A href=with_world("/trends/{world}", "/trends") attr:class="side-nav-item">
+                <A href=with_world("/market/trends/{world}", "/market/trends") attr:class="side-nav-item">
                     <Icon icon=i::FaChartLineSolid />
                     <span class="side-nav-label">{t!(i18n, market_trends)}</span>
                 </A>
-                <A href=with_world("/scrip-sources?world={world}", "/scrip-sources") attr:class="side-nav-item">
+                <A href=with_world("/market/scrip-sources?world={world}", "/market/scrip-sources") attr:class="side-nav-item">
                     <Icon icon=i::FaCoinsSolid />
                     <span class="side-nav-label">{t!(i18n, scrip_sources)}</span>
                 </A>
-                <A href=with_world("/venture-analyzer?world={world}", "/venture-analyzer") attr:class="side-nav-item">
+                <A href=with_world("/market/venture-analyzer?world={world}", "/market/venture-analyzer") attr:class="side-nav-item">
                     <Icon icon=i::FaBriefcaseSolid />
                     <span class="side-nav-label">{t!(i18n, venture_analyzer)}</span>
                 </A>
-                <A href="/items" attr:class="side-nav-item">
+                <A href="/market/items" attr:class="side-nav-item">
                     <Icon icon=i::MdiJellyfish />
                     <span class="side-nav-label">{t!(i18n, item_explorer)}</span>
                 </A>
-                <A href="/currency-exchange" attr:class="side-nav-item">
+                <A href="/market/currency-exchange" attr:class="side-nav-item">
                     <Icon icon=i::BsArrowLeftRight />
                     <span class="side-nav-label">{t!(i18n, currency_exchange)}</span>
                 </A>
 
                 <div class="side-nav-section-header">{t!(i18n, side_nav_saved)}</div>
 
-                <A href="/list" attr:class="side-nav-item">
+                <A href="/market/list" attr:class="side-nav-item">
                     <Icon icon=i::AiOrderedListOutlined />
                     <span class="side-nav-label">{t!(i18n, lists)}</span>
                 </A>
-                <A href="/groups" attr:class="side-nav-item">
+                <A href="/market/groups" attr:class="side-nav-item">
                     <Icon icon=i::BiGroupSolid />
                     <span class="side-nav-label">{t!(i18n, groups)}</span>
                 </A>
-                <A href="/retainers/listings" attr:class="side-nav-item">
+                <A href="/market/retainers/listings" attr:class="side-nav-item">
                     <Icon icon=i::BiGroupSolid />
                     <span class="side-nav-label">{t!(i18n, retainers)}</span>
                 </A>
-                <A href="/alerts" attr:class="side-nav-item">
+                <A href="/market/alerts" attr:class="side-nav-item">
                     <Icon icon=i::BsBell />
                     <span class="side-nav-label">{t!(i18n, alerts)}</span>
                 </A>

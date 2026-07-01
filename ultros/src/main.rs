@@ -12,6 +12,7 @@ pub(crate) mod search_service;
 pub(crate) mod utils;
 mod web;
 mod web_metrics;
+pub(crate) mod worker;
 
 use crate::item_update_service::UpdateService;
 #[cfg(feature = "profiling")]
@@ -65,8 +66,10 @@ async fn run_socket_listener(
     db: UltrosDb,
     listings_tx: EventProducer<ListingEventData>,
     sales_tx: EventProducer<SaleEventData>,
+    health_monitor: Arc<crate::worker::ws_health_monitor::WsHealthMonitor>,
     token: CancellationToken,
 ) {
+    health_monitor.set_connected(true);
     let mut socket = WebsocketClient::connect().await;
     socket
         .update_subscription(SubscribeMode::Subscribe, EventChannel::ListingsAdd, None)
@@ -82,10 +85,17 @@ async fn run_socket_listener(
         tokio::select! {
             _ = token.cancelled() => {
                 info!("socket listener cancelled");
+                health_monitor.set_connected(false);
                 break;
             }
             msg = receiver.recv() => {
                 if let Some(msg) = msg {
+                    if let SocketRx::Event(Err(e)) = &msg {
+                        error!(error = ?e, "WebSocket error");
+                        health_monitor.set_connected(false);
+                    } else {
+                        health_monitor.set_connected(true);
+                    }
                     // create a new task for each message
                     let db = db.clone();
             // hopefully this is cheap to clone
@@ -286,6 +296,35 @@ async fn main() -> Result<()> {
     let history_sender = senders.history.clone();
     let token = CancellationToken::new();
     let socket_token = token.clone();
+
+    // Start health monitor
+    let (health_monitor, _health_rx) =
+        crate::worker::ws_health_monitor::WsHealthMonitor::new(db.clone());
+    health_monitor.clone().start(token.clone());
+
+    // Start tax rate worker
+    let tax_rate_worker = crate::worker::tax_rate_worker::TaxRateWorker::new(db.clone());
+    tax_rate_worker.start(token.clone());
+
+    // Start arbitrage daemon
+    let arbitrage_trigger = Arc::new(tokio::sync::Notify::new());
+    let arbitrage_daemon = crate::worker::arbitrage_daemon::ArbitrageDaemon::new(
+        db.clone(),
+        arbitrage_trigger.clone(),
+    );
+    arbitrage_daemon.start(token.clone());
+
+    // Trigger arbitrage scan on listings update
+    let listings_rx = senders.listings.subscribe();
+    let trigger_clone = arbitrage_trigger.clone();
+    tokio::spawn(async move {
+        let mut listings_rx = listings_rx;
+        while let Ok(_event) = listings_rx.recv().await {
+            trigger_clone.notify_one();
+        }
+    });
+
+    let health_monitor_clone = health_monitor.clone();
     tokio::spawn(async move {
         let (datacenters, worlds) = futures::future::join(
             universalis_client.get_data_centers(),
@@ -297,7 +336,14 @@ async fn main() -> Result<()> {
             .await
             .expect("Unable to populate worlds datacenters- is universalis down?");
         info!("starting websocket");
-        run_socket_listener(init, listings_sender, history_sender, socket_token).await;
+        run_socket_listener(
+            init,
+            listings_sender,
+            history_sender,
+            health_monitor_clone,
+            socket_token,
+        )
+        .await;
     });
     // on first run, the world cache may be empty
     let world_cache = Arc::new(WorldCache::new(&db).await);
@@ -395,6 +441,7 @@ async fn main() -> Result<()> {
         world_helper.clone(),
         update_service,
         discord_token,
+        health_monitor.clone(),
         token.clone(),
     ));
 
@@ -431,6 +478,8 @@ async fn main() -> Result<()> {
         search_service,
         token: token.clone(),
         ch_client,
+        arbitrage_trigger,
+        health_monitor,
     };
     let web_task = tokio::spawn(web::start_web(web_state));
     tokio::select! {

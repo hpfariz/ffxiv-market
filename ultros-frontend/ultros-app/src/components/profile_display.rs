@@ -18,7 +18,7 @@ pub fn ProfileDisplay() -> impl IntoView {
                             Either::Left(
                                 view! {
                                     <div class="flex items-center gap-2">
-                                        <A href="/profile">
+                                        <A href="/market/profile">
                                             <img class="avatar" src=auth.avatar alt=auth.username />
                                         </A>
 
@@ -38,7 +38,7 @@ pub fn ProfileDisplay() -> impl IntoView {
                                             <Icon height="1.2em" width="1.2em" icon=i::BsDiscord aria_hidden=true />
                                             <span>{t!(i18n, profile_login_button)}</span>
                                         </a>
-                                        <A href="/settings" attr:class="nav-link">
+                                        <A href="/market/settings" attr:class="nav-link">
                                             <Icon height="2em" width="2em" icon=i::IoSettingsSharp aria_hidden=true />
                                             <span class="sr-only">Settings</span>
                                         </A>

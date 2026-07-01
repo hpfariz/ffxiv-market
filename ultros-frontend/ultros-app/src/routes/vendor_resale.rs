@@ -612,7 +612,7 @@ fn VendorResaleTable(
                                     <div role="cell" class="px-4 py-2 flex flex-row w-84 items-center gap-2">
                                         <a
                                             class="flex flex-row items-center gap-2 hover:text-brand-300 transition-colors truncate overflow-x-clip w-full"
-                                            href=format!("/item/{}/{item_id}", world())
+                                            href=format!("/market/item/{}/{item_id}", world())
                                         >
                                             <div class="shrink-0">
                                                 <ItemIcon item_id icon_size=IconSize::Small loading=icon_loading />
@@ -687,7 +687,7 @@ pub fn VendorWorldView() -> impl IntoView {
                     title=t_string!(i18n, vendor_resale).to_string()
                     summary=t_string!(i18n, vendor_resale_tool_summary_v2).to_string()
                     context=t_string!(i18n, vendor_resale_tool_context).to_string()
-                    help_href="/help/vendor-resale"
+                    help_href="/market/help/vendor-resale"
                     help_body=t_string!(i18n, vendor_resale_tool_help).to_string()
                 />
 
@@ -799,16 +799,19 @@ fn VendorWorldNavigator() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(world) = current_world() {
-            let world = world.name;
-            let query_map = query.get_untracked();
-            let query = query_map.to_query_string();
-            nav(
-                &format!("/vendor-resale/{world}?{query}"),
-                NavigateOptions {
-                    scroll: false,
-                    ..Default::default()
-                },
-            );
+            let world_param = params.with(|p| p.get("world").clone().unwrap_or_default());
+            if world.name != world_param {
+                let world = world.name;
+                let query_map = query.get_untracked();
+                let query = query_map.to_query_string();
+                nav(
+                    &format!("/market/vendor-resale/{world}?{query}"),
+                    NavigateOptions {
+                        scroll: false,
+                        ..Default::default()
+                    },
+                );
+            }
         }
     });
 

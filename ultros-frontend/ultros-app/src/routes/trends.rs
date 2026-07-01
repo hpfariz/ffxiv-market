@@ -191,7 +191,7 @@ fn TrendsTable(items: Vec<TrendItem>, world: String) -> impl IntoView {
                                 <div role="cell" class="px-3 py-2 flex flex-row flex-1 min-w-[14rem] items-center gap-2">
                                     <a
                                         class="flex flex-row items-center gap-2 hover:text-brand-300 transition-colors truncate overflow-x-clip w-full text-[color:var(--color-text)]"
-                                        href=format!("/item/{}/{item_id}", world)
+                                        href=format!("/market/item/{}/{item_id}", world)
                                     >
                                         <div class="shrink-0">
                                             <ItemIcon item_id icon_size=IconSize::Small loading=icon_loading />
@@ -254,14 +254,17 @@ fn TrendsWorldNavigator() -> impl IntoView {
 
     Effect::new(move |_| {
         if let Some(world) = current_world() {
-            let world = world.name;
-            nav(
-                &format!("/trends/{world}"),
-                NavigateOptions {
-                    scroll: false,
-                    ..Default::default()
-                },
-            );
+            let world_param = params.with(|p| p.get("world").clone().unwrap_or_default());
+            if world.name != world_param {
+                let world = world.name;
+                nav(
+                    &format!("/market/trends/{world}"),
+                    NavigateOptions {
+                        scroll: false,
+                        ..Default::default()
+                    },
+                );
+            }
         }
     });
 
@@ -376,7 +379,7 @@ pub fn Trends() -> impl IntoView {
                     title=t_string!(i18n, market_trends).to_string()
                     summary=t_string!(i18n, trends_tool_summary).to_string()
                     context=t_string!(i18n, trends_tool_context).to_string()
-                    help_href="/help/market-trends"
+                    help_href="/market/help/market-trends"
                     help_body=t_string!(i18n, trends_tool_help).to_string()
                 />
 

@@ -35,7 +35,7 @@ pub fn Alerts() -> impl IntoView {
                     "Run "
                     <code class="rounded bg-black/40 px-1.5 py-0.5">"/ffxiv retainer add_undercut_alert"</code>
                     " in any channel where the bot is installed. "
-                    <a href="/bot#getting-started" class="text-brand-300 underline hover:text-brand-200">
+                    <a href="/market/bot#getting-started" class="text-brand-300 underline hover:text-brand-200">
                         "See the bot guide →"
                     </a>
                 </p>

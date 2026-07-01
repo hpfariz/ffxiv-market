@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use anyhow::Result;
-use sea_orm::{EntityTrait, ColumnTrait, PaginatorTrait, FromQueryResult, QuerySelect, QueryFilter};
-use ultros_db::UltrosDb;
-use ultros_db::entity::{profile_crafting_settings, profile_crafting_subcraft_threshold};
-use xiv_gen::{Recipe, Item};
+use sea_orm::{ColumnTrait, EntityTrait, FromQueryResult, QueryFilter};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use ultros_db::UltrosDb;
+use ultros_db::entity::profile_crafting_subcraft_threshold;
+use xiv_gen::Recipe;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SubcraftIngredientDetail {
@@ -45,9 +45,12 @@ impl CraftingEngine {
         show_all_levels: bool,
     ) -> Result<Vec<CraftingOpportunity>> {
         let (settings, thresholds) = self.db.get_crafting_settings(profile_id).await?;
-        let profile = self.db.get_profile_by_id(profile_id).await?
+        let profile = self
+            .db
+            .get_profile_by_id(profile_id)
+            .await?
             .ok_or_else(|| anyhow::anyhow!("Profile not found"))?;
-        
+
         let active_dc_id = match profile.active_datacenter_id {
             Some(id) => id,
             None => return Ok(Vec::new()),
@@ -90,7 +93,7 @@ impl CraftingEngine {
             .collect();
 
         let data = xiv_gen_db::data();
-        
+
         // Group recipes by item_result
         let mut recipes_by_result: HashMap<i32, &Recipe> = HashMap::new();
         for recipe in data.recipes.values() {
@@ -101,26 +104,29 @@ impl CraftingEngine {
         // Gather all relevant item IDs to batch-fetch lowest prices
         // Since doing it one by one is slow, we will fetch all active listings for DC in one query
         let all_item_ids: Vec<i32> = data.items.keys().map(|id| id.0).collect();
-        
+
         // Fetch all lowest prices in the DC
         // To do this efficiently, we query the database for the lowest price of each item in the DC worlds
-        let lowest_prices = self.fetch_dc_lowest_prices(&dc_world_ids, &all_item_ids).await?;
+        let lowest_prices = self
+            .fetch_dc_lowest_prices(&dc_world_ids, &all_item_ids)
+            .await?;
 
         let mut opportunities = Vec::new();
 
         for recipe in data.recipes.values() {
             // Level and Class Job filter
             let craft_type = recipe.craft_type; // Carpenter is 0, Blacksmith is 1, etc., mapped to xiv-gen craft classes
-            
+
             // Map craft type to class job id
             // CRP = 8, BSM = 9, ARM = 10, GSM = 11, LTW = 12, WVR = 13, ALC = 14, CUL = 15
-            let class_job_id = craft_type + 8; 
+            let class_job_id = craft_type + 8;
 
             if !show_all_levels {
                 let player_level = crafter_levels.get(&class_job_id).cloned().unwrap_or(0);
-                
+
                 // Lookup recipe level requirement from recipe_level_tables
-                let recipe_level = data.recipe_level_tables
+                let recipe_level = data
+                    .recipe_level_tables
                     .get(&xiv_gen::RecipeLevelTableId(recipe.recipe_level_table))
                     .map(|r| r.class_job_level as i32)
                     .unwrap_or(1);
@@ -161,7 +167,7 @@ impl CraftingEngine {
                     qty,
                     data,
                 );
-                
+
                 total_material_cost += cost;
             }
 
@@ -181,14 +187,19 @@ impl CraftingEngine {
 
             // Flags
             let mut flags = Vec::new();
-            
+
             // Stub for HQ_TURNIN: Grand Company turn ins can be inferred from leve items or static check
-            let is_gc_turnin = data.leves.values().any(|l| l.name.contains(&result_item.name));
+            let is_gc_turnin = data
+                .leves
+                .values()
+                .any(|l| l.name.contains(&result_item.name));
             if is_gc_turnin {
                 flags.push("HQ_TURNIN".to_string());
             }
 
-            if result_item.description.to_lowercase().contains("glamour") || result_item.name.to_lowercase().contains("glamour") {
+            if result_item.description.to_lowercase().contains("glamour")
+                || result_item.name.to_lowercase().contains("glamour")
+            {
                 flags.push("GLAMOUR".to_string());
             }
 
@@ -197,7 +208,8 @@ impl CraftingEngine {
                 item_id: recipe.item_result,
                 name: result_item.name.clone(),
                 craft_type,
-                level: data.recipe_level_tables
+                level: data
+                    .recipe_level_tables
                     .get(&xiv_gen::RecipeLevelTableId(recipe.recipe_level_table))
                     .map(|r| r.class_job_level as i32)
                     .unwrap_or(1),
@@ -227,12 +239,14 @@ impl CraftingEngine {
         qty: i32,
         data: &xiv_gen::Data,
     ) -> i64 {
-        let name = data.items.get(&xiv_gen::ItemId(item_id))
+        let name = data
+            .items
+            .get(&xiv_gen::ItemId(item_id))
             .map(|i| i.name.clone())
             .unwrap_or_else(|| format!("Item #{}", item_id));
 
-        let buy_price = lowest_prices.get(&item_id).cloned().unwrap_or(999_999_999) as i64;
-        
+        let buy_price = lowest_prices.get(&item_id).cloned().unwrap_or(999_999_999);
+
         if visited.contains(&item_id) {
             // Loop prevention
             let total_cost = buy_price * qty as i64;
@@ -253,11 +267,11 @@ impl CraftingEngine {
 
         if let Some(recipe) = sub_recipe {
             let class_job_id = recipe.craft_type + 8;
-            
+
             // Recursively resolve materials cost for sub-craft
             let mut sub_details = Vec::new();
             let mut craft_cost_sum = 0;
-            
+
             for idx in 0..8 {
                 let ingredient_id = recipe.ingredient[idx];
                 let sub_qty = recipe.amount_ingredient[idx];
@@ -291,15 +305,15 @@ impl CraftingEngine {
                 };
                 let savings_gil = buy_price - craft_price_per_unit;
 
-                if let Some(pct_t) = t.savings_pct_threshold {
-                    if savings_pct >= pct_t {
-                        choose_craft = true;
-                    }
+                if let Some(pct_t) = t.savings_pct_threshold
+                    && savings_pct >= pct_t
+                {
+                    choose_craft = true;
                 }
-                if let Some(gil_t) = t.savings_gil_threshold {
-                    if savings_gil >= gil_t {
-                        choose_craft = true;
-                    }
+                if let Some(gil_t) = t.savings_gil_threshold
+                    && savings_gil >= gil_t
+                {
+                    choose_craft = true;
                 }
             } else {
                 // If no threshold configured, choose the cheaper path
@@ -335,7 +349,7 @@ impl CraftingEngine {
             total_cost,
             path: "Buy".to_string(),
         });
-        
+
         total_cost
     }
 

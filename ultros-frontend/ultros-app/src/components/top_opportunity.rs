@@ -66,8 +66,8 @@ pub fn TopOpportunities(world: Signal<Option<String>>) -> impl IntoView {
                 </h2>
                 <A
                     href=move || world_for_link.get()
-                        .map(|w| format!("/flip-finder/{w}"))
-                        .unwrap_or_else(|| "/flip-finder".to_string())
+                        .map(|w| format!("/market/flip-finder/{w}"))
+                        .unwrap_or_else(|| "/market/flip-finder".to_string())
                     attr:class="text-xs text-[color:var(--accent)] hover:underline"
                 >
                     {t!(i18n, top_opportunities_view_all)}
@@ -137,7 +137,7 @@ fn FeaturedDeal(deal: ResaleStatsDto, world_name: String) -> impl IntoView {
     let demand_label = deal.sold_within.clone();
     let band = deal.confidence_band;
     let sample = deal.sample_size_30d;
-    let href = format!("/item/{world_name}/{item_id}");
+    let href = format!("/market/item/{world_name}/{item_id}");
 
     view! {
         <a
@@ -192,7 +192,7 @@ fn CompactDeal(deal: ResaleStatsDto, world_name: String) -> impl IntoView {
         .map(|i| i.name.as_str().to_string())
         .unwrap_or_else(|| t_string!(i18n, unknown_item).to_string());
     let (buy, sell) = derive_buy_sell(&deal);
-    let href = format!("/item/{world_name}/{item_id}");
+    let href = format!("/market/item/{world_name}/{item_id}");
 
     view! {
         <a

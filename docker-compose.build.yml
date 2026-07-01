@@ -1,0 +1,6 @@
+services:
+  ultros:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ffxiv-market-ultros:latest

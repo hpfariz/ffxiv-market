@@ -70,7 +70,7 @@ fn WorldButton(
                 ]
                     .join(" ")
             }
-                href=format!("/item/{}/{item_id}", Url::escape(&world_name))
+                href=format!("/market/item/{}/{item_id}", Url::escape(&world_name))
             >
                 {move || {
                     is_home_world
@@ -1203,8 +1203,14 @@ pub fn ItemView() -> impl IntoView {
     });
 
     let recently_viewed = use_context::<RecentItems>().unwrap();
+    let hydrated = RwSignal::new(false);
     Effect::new(move |_| {
-        recently_viewed.add_item(item_id());
+        hydrated.set(true);
+    });
+    Effect::new(move |_| {
+        if hydrated.get() {
+            recently_viewed.add_item(item_id());
+        }
     });
 
     let (price_zone, _) = get_price_zone();
@@ -1300,7 +1306,7 @@ pub fn ItemView() -> impl IntoView {
                                                 view! {
                                                     <a
                                                         class="text-brand-300 hover:text-brand-200 transition-colors"
-                                                        href=["/items/category/", &s.name.replace("/", "%2F")]
+                                                        href=["/market/items/category/", &s.name.replace("/", "%2F")]
                                                             .concat()
                                                     >
                                                         {c.name.as_str()}

@@ -1,4 +1,5 @@
 #![recursion_limit = "256"]
+#![allow(dead_code)]
 pub(crate) mod analysis;
 pub(crate) mod api;
 pub(crate) mod components;
@@ -35,7 +36,6 @@ use crate::{
         groups::*,
         help::*,
         history::*,
-        home_page::*,
         item_explorer::*,
         item_view::*,
         job_set_detail::JobSetDetail,
@@ -43,6 +43,7 @@ use crate::{
         leve_analyzer::*,
         list_view::*,
         lists::*,
+        market_dashboard::*,
         not_found::NotFound,
         recipe_analyzer::*,
         retainers::*,
@@ -60,7 +61,7 @@ use leptos::prelude::*;
 #[cfg(feature = "hydrate")]
 use leptos_hotkeys::{provide_hotkeys_context, scopes};
 use leptos_meta::*;
-use leptos_router::components::{A, ParentRoute, Route, Router, Routes};
+use leptos_router::components::{A, Outlet, ParentRoute, Route, Router, Routes};
 use leptos_router::path;
 use log::info;
 
@@ -347,13 +348,13 @@ pub fn Footer() -> impl IntoView {
                         </a>
                     </PatreonWrapper>
                     <A
-                        href="/help"
+                        href="/market/help"
                         attr:class="btn-ghost opacity-80 hover:opacity-100"
                     >
                         <Icon icon=i::BsBook width="1.2em" height="1.2em" /><span>{t!(i18n, help_label)}</span>
                     </A>
                     <A
-                        href="/about"
+                        href="/market/about"
                         attr:class="btn-ghost opacity-80 hover:opacity-100"
                     >
                         <Icon icon=i::BsInfoCircle width="1.2em" height="1.2em" /><span>{t!(i18n, about)}</span>
@@ -433,6 +434,8 @@ pub fn AppInner(cookies: Cookies) -> impl IntoView {
     provide_context(RecentItems::new());
     provide_theme_settings();
     provide_side_nav_settings();
+    let is_not_found = RwSignal::new(false);
+    provide_context(is_not_found);
     provide_toast_context();
     provide_xiv_data_revision();
     provide_on_hand_context();
@@ -467,9 +470,9 @@ pub fn AppInner(cookies: Cookies) -> impl IntoView {
             <ToastContainer />
             <Router>
                 <SentryRouteTag />
-                <AppShell>
-                    <Routes fallback=NotFound>
-                        <Route path=path!("") view=HomePage />
+                <Routes fallback=NotFound>
+                    <ParentRoute path=path!("market") view=AppShellOutlet>
+                        <Route path=path!("") view=MarketDashboard />
                         <ParentRoute path=path!("retainers") view=Retainers>
                             <Route path=path!("edit") view=EditRetainers />
                             <Route path=path!("undercuts") view=RetainerUndercuts />
@@ -498,7 +501,7 @@ pub fn AppInner(cookies: Cookies) -> impl IntoView {
                         <Route path=path!("flip-finder") view=Analyzer />
                         <Route path=path!("analyzer") view=move || {
                             let nav = leptos_router::hooks::use_navigate();
-                            Effect::new(move |_| { nav("/flip-finder", Default::default()); });
+                            Effect::new(move |_| { nav("/market/flip-finder", Default::default()); });
                             view! { <div /> }
                         } />
                         <Route path=path!("flip-finder/:world") view=AnalyzerWorldView />
@@ -515,7 +518,7 @@ pub fn AppInner(cookies: Cookies) -> impl IntoView {
                             let params = leptos_router::hooks::use_params_map();
                             Effect::new(move |_| {
                                 let w = params.with_untracked(|p| p.get("world").clone().unwrap_or_default());
-                                let to = format!("/flip-finder/{}", w);
+                                let to = format!("/market/flip-finder/{}", w);
                                 nav(&to, Default::default());
                             });
                             view! { <div /> }
@@ -536,11 +539,21 @@ pub fn AppInner(cookies: Cookies) -> impl IntoView {
                             <Route path=path!(":id") view=ExchangeItem />
                             <Route path=path!("") view=CurrencySelection />
                         </ParentRoute>
-                    </Routes>
-                </AppShell>
+                        <Route path=path!("*any") view=NotFound />
+                    </ParentRoute>
+                </Routes>
             </Router>
         </div>
         <Footer />
+    }
+}
+
+#[component]
+fn AppShellOutlet() -> impl IntoView {
+    view! {
+        <AppShell>
+            <Outlet />
+        </AppShell>
     }
 }
 

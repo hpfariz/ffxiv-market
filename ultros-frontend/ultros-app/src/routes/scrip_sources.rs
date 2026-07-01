@@ -390,7 +390,7 @@ fn ScripSourceTable(
                                 <div role="cell" class="px-4 py-2 flex flex-row w-84 items-center gap-2">
                                      <a
                                         class="flex flex-row items-center gap-2 hover:text-brand-300 transition-colors truncate overflow-x-clip w-full"
-                                        href=format!("/item/{}/{}", world(), item_id.0)
+                                        href=format!("/market/item/{}/{}", world(), item_id.0)
                                     >
                                         <div class="shrink-0">
                                             <ItemIcon item_id=item_id.0 icon_size=IconSize::Small />
@@ -518,7 +518,7 @@ pub fn ScripSources() -> impl IntoView {
                     title=t_string!(i18n, scrip_sources_title).to_string()
                     summary=t_string!(i18n, scrip_sources_summary).to_string()
                     context=t_string!(i18n, scrip_sources_context).to_string()
-                    help_href="/help/scrip-sources"
+                    help_href="/market/help/scrip-sources"
                     help_body=t_string!(i18n, scrip_sources_help_body).to_string()
                 />
 

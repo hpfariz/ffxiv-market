@@ -16,6 +16,7 @@ pub mod job_set_detail;
 pub mod leve_analyzer;
 pub mod list_view;
 pub mod lists;
+pub mod market_dashboard;
 pub mod not_found;
 pub mod recipe_analyzer;
 pub mod retainers;

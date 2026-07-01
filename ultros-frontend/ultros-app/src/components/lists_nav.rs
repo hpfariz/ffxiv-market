@@ -8,7 +8,7 @@ pub fn ListsNav() -> impl IntoView {
     let i18n = use_i18n();
     view! {<div class="content-nav">
 
-        <A exact=true attr:class="nav-link" href="/list">
+        <A exact=true attr:class="nav-link" href="/market/list">
             <Icon height="1.25em" width="1.25em" icon=AiOrderedListOutlined />
             <span>{t!(i18n, lists)}</span>
         </A>

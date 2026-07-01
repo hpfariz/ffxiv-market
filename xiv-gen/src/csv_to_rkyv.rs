@@ -72,6 +72,8 @@ pub fn read_data(lang: Language) -> Data {
             base_path
         )),
         craft_leves: read_csv_to_map(&format!("{}CraftLeve.csv", base_path)),
+        gathering_items: read_csv_to_map(&format!("{}GatheringItem.csv", base_path)),
+        gathering_point_bases: read_csv_to_map(&format!("{}GatheringPointBase.csv", base_path)),
     }
 }
 

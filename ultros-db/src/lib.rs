@@ -6,6 +6,7 @@ pub mod entity;
 mod ffxiv_character;
 pub mod listings;
 pub mod lists;
+pub mod profiles;
 pub mod recently_updated;
 pub mod retainers;
 pub mod sales;

@@ -81,7 +81,7 @@ fn ItemAmount(#[prop(into)] item_amount: Option<ItemAmount>) -> impl IntoView {
                 <div class="flex flex-row gap-1">
                     <A
                         attr:class="flex flex-row gap-1 min-w-0"
-                        href=format!("/item/{}", item_amount.item.key_id.0)
+                        href=format!("/market/item/{}", item_amount.item.key_id.0)
                     >
                         <ItemIcon item_id=item_amount.item.key_id.0 icon_size=IconSize::Small />
                         <span class="truncate" title=item_amount.item.name.as_str()>{item_amount.item.name.as_str()}</span>
@@ -640,7 +640,7 @@ pub fn ExchangeItem() -> impl IntoView {
                             <div class="bg-red-900/50 p-4 rounded-lg text-white">
                                 {t!(i18n, currency_exchange_home_world_not_set_prefix)}
                                 <A
-                                    href="/settings"
+                                    href="/market/settings"
                                     attr:class="underline"
                                 >
                                     {t!(i18n, currency_exchange_settings)}
@@ -672,7 +672,7 @@ pub fn ExchangeItem() -> impl IntoView {
                                                         let url = t
                                                             .receive_item
                                                             .as_ref()
-                                                            .map(|ri| format!("/item/{}", ri.item.key_id.0))
+                                                            .map(|ri| format!("/market/item/{}", ri.item.key_id.0))
                                                             .unwrap_or_default();
                                                         if let Some(w) = web_sys::window() {
                                                             let _ = w.location().set_href(&url);
@@ -1058,7 +1058,7 @@ pub fn CurrencyExchange() -> impl IntoView {
             <Ad class="w-full h-[100px]" />
         </div>
         <div class="main-content">
-            <A href="/currency-exchange">
+            <A href="/market/currency-exchange">
                 <h3 class="text-2xl font-bold text-[color:var(--brand-fg)] hover:opacity-90 transition-all ease-in-out duration-500">
                     {t!(i18n, currency_exchange_title)}
                 </h3>

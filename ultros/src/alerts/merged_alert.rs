@@ -1,12 +1,13 @@
+#![allow(dead_code)]
+
+use crate::alerts::delivery::{send_dm, send_webhook};
 use std::collections::HashMap;
+use std::sync::OnceLock;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::sync::OnceLock;
 use tokio::time::sleep;
-use tracing::{info, error};
-use poise::serenity_prelude as serenity;
+use tracing::error;
 use ultros_db::UltrosDb;
-use crate::alerts::delivery::{send_dm, send_webhook};
 
 pub(crate) struct ArbitrageSignal {
     pub gross_profit: i64,
@@ -37,7 +38,7 @@ pub(crate) struct PendingAlertEntry {
 pub(crate) struct MergedAlertManager {
     db: UltrosDb,
     pending: Mutex<HashMap<(i32, i32, bool), PendingAlertEntry>>, // Key: (profile_id, item_id, hq)
-    cooldowns: Mutex<HashMap<(i32, i32, bool), Instant>>, // Key: (profile_id, item_id, hq)
+    cooldowns: Mutex<HashMap<(i32, i32, bool), Instant>>,         // Key: (profile_id, item_id, hq)
 }
 
 impl MergedAlertManager {
@@ -49,6 +50,7 @@ impl MergedAlertManager {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn signal_arbitrage(
         self: &Arc<Self>,
         profile_id: i32,
@@ -57,7 +59,7 @@ impl MergedAlertManager {
         signal: ArbitrageSignal,
     ) {
         let key = (profile_id, item_id, hq);
-        
+
         // Enforce cooldown
         if self.is_on_cooldown(profile_id, item_id, hq).await {
             return;
@@ -73,7 +75,7 @@ impl MergedAlertManager {
                 spawned_at: Instant::now(),
             };
             pending.insert(key, entry);
-            
+
             // Spawn dispatch timer
             let manager = self.clone();
             tokio::spawn(async move {
@@ -83,6 +85,7 @@ impl MergedAlertManager {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn signal_crafting(
         self: &Arc<Self>,
         profile_id: i32,
@@ -122,12 +125,13 @@ impl MergedAlertManager {
             Ok(Some(p)) => p,
             _ => return false,
         };
-        let cooldown_duration = Duration::from_secs(profile.alert_item_cooldown_minutes as u64 * 60);
+        let cooldown_duration =
+            Duration::from_secs(profile.alert_item_cooldown_minutes as u64 * 60);
         let cooldowns = self.cooldowns.lock().unwrap();
-        if let Some(&last_sent) = cooldowns.get(&(profile_id, item_id, hq)) {
-            if last_sent.elapsed() < cooldown_duration {
-                return true;
-            }
+        if let Some(&last_sent) = cooldowns.get(&(profile_id, item_id, hq))
+            && last_sent.elapsed() < cooldown_duration
+        {
+            return true;
         }
         false
     }
@@ -150,10 +154,12 @@ impl MergedAlertManager {
         };
 
         // Resolve item details
-        let item_name = xiv_gen_db::data().items.get(&xiv_gen::ItemId(item_id))
+        let item_name = xiv_gen_db::data()
+            .items
+            .get(&xiv_gen::ItemId(item_id))
             .map(|i| i.name.clone())
             .unwrap_or_else(|| format!("Item #{}", item_id));
-        
+
         let quality_str = if hq { "HQ" } else { "NQ" };
 
         let title = format!("Market Alert: {} ({})", item_name, quality_str);
@@ -190,13 +196,16 @@ impl MergedAlertManager {
         let ctx_opt = crate::alerts::delivery::get_serenity_ctx();
         let mut success = false;
 
-        if let Some(webhook_url) = &profile.alert_channel_webhook {
-            if !webhook_url.trim().is_empty() {
-                if let Err(e) = send_webhook(webhook_url, &title, &body).await {
-                    error!("Failed to send webhook alert for profile {}: {}", profile.id, e);
-                } else {
-                    success = true;
-                }
+        if let Some(webhook_url) = &profile.alert_channel_webhook
+            && !webhook_url.trim().is_empty()
+        {
+            if let Err(e) = send_webhook(webhook_url, &title, &body).await {
+                error!(
+                    "Failed to send webhook alert for profile {}: {}",
+                    profile.id, e
+                );
+            } else {
+                success = true;
             }
         }
 
@@ -208,7 +217,10 @@ impl MergedAlertManager {
                     success = true;
                 }
             } else {
-                error!("Serenity context not available to send DM alert for profile {}", profile.id);
+                error!(
+                    "Serenity context not available to send DM alert for profile {}",
+                    profile.id
+                );
             }
         }
 
@@ -225,6 +237,7 @@ pub(crate) fn init_merged_alert_manager(db: UltrosDb) {
     let _ = MERGED_ALERT_MANAGER.set(Arc::new(MergedAlertManager::new(db)));
 }
 
+#[allow(dead_code)]
 pub(crate) fn get_merged_alert_manager() -> Option<Arc<MergedAlertManager>> {
     MERGED_ALERT_MANAGER.get().cloned()
 }
