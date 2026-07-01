@@ -28,7 +28,7 @@ env:
 
 jobs:
     build:
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04-arm
         permissions:
             contents: read
             packages: write
@@ -40,9 +40,6 @@ jobs:
               uses: actions/checkout@v4.2.2
               with:
                   submodules: recursive
-
-            - name: Set up QEMU
-              uses: docker/setup-qemu-action@v3
 
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
@@ -112,7 +109,7 @@ jobs:
               uses: docker/build-push-action@v6
               with:
                   context: .
-                  platforms: linux/amd64
+                  platforms: linux/arm64
                   target: debug-files
                   outputs: type=local,dest=./debug
                   # Reuse the layer cache the main build already populated;
