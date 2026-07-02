@@ -52,12 +52,25 @@ COPY --from=planner /app/recipe.json recipe.json
 #  - bin-package = "ultros"        → server-release profile, native
 #  - lib-package = "ultros-client" → release profile, wasm32-unknown-unknown
 # Edits to source code below this line won't invalidate these layers.
-RUN cargo chef cook --profile server-release -p ultros --recipe-path recipe.json
-RUN cargo chef cook --release --target wasm32-unknown-unknown -p ultros-client --recipe-path recipe.json
+RUN --mount=type=cache,id=ultros-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=ultros-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=ultros-target,target=/app/target,sharing=locked \
+    cargo chef cook --profile server-release -p ultros --recipe-path recipe.json
+RUN --mount=type=cache,id=ultros-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=ultros-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=ultros-target,target=/app/target,sharing=locked \
+    cargo chef cook --release --target wasm32-unknown-unknown -p ultros-client --recipe-path recipe.json
 # Now the actual source.
 COPY . .
-ENV WASM_BINDGEN_WEAKREF=1
-RUN cargo leptos --manifest-path=./Cargo.toml build --release -vv
+ENV WASM_BINDGEN_WEAKREF=1 \
+    CARGO_INCREMENTAL=1
+RUN --mount=type=cache,id=ultros-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=ultros-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=ultros-target,target=/app/target,sharing=locked \
+    cargo leptos --manifest-path=./Cargo.toml build --release -vv \
+    && mkdir -p /app/build-output \
+    && cp /app/target/server-release/ultros /app/build-output/ultros \
+    && cp -a /app/target/site /app/build-output/site
 # Split debug info: keep an unstripped copy for CI to upload to GlitchTip,
 # strip the production binary. objcopy is in binutils (transitive via
 # build-essential). The GNU build-id NOTE survives stripping and is the
@@ -70,9 +83,9 @@ RUN cargo leptos --manifest-path=./Cargo.toml build --release -vv
 # of glitchtip-cli's symbolic-based parser tripping on a too-modern format.
 # Roughly 3–4× shrink on .debug_* sections vs uncompressed; uncompressed
 # upload would otherwise be ~250–300MB per push.
-RUN cp /app/target/server-release/ultros /app/target/server-release/ultros.unstripped \
-    && objcopy --compress-debug-sections=zlib /app/target/server-release/ultros.unstripped \
-    && objcopy --strip-debug --strip-unneeded /app/target/server-release/ultros
+RUN cp /app/build-output/ultros /app/build-output/ultros.unstripped \
+    && objcopy --compress-debug-sections=zlib /app/build-output/ultros.unstripped \
+    && objcopy --strip-debug --strip-unneeded /app/build-output/ultros
 
 # ---- Debug-files artifact (export-only) --------------------------------------
 # Tiny stage holding only the unstripped binary. Never part of any pushed image.
@@ -83,7 +96,7 @@ RUN cp /app/target/server-release/ultros /app/target/server-release/ultros.unstr
 # Placed before `runner` so the default (no --target) build still produces the
 # runtime image, not this artifact.
 FROM scratch AS debug-files
-COPY --from=builder /app/target/server-release/ultros.unstripped /ultros.unstripped
+COPY --from=builder /app/build-output/ultros.unstripped /ultros.unstripped
 
 # ---- Runtime image -----------------------------------------------------------
 FROM debian:bookworm-slim AS runner
@@ -105,8 +118,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 # cargo-leptos writes the bin to target/<bin-profile-release>/ when that's set.
-COPY --from=builder /app/target/server-release/ultros /app/ultros
-COPY --from=builder /app/target/site /app/site
+COPY --from=builder /app/build-output/ultros /app/ultros
+COPY --from=builder /app/build-output/site /app/site
 COPY --from=builder /app/Cargo.toml /app/Cargo.toml
 # Fonts used by resvg at runtime. Same files are also in /app/site for
 # the client; keeping the system install lets fontconfig find them server-side.

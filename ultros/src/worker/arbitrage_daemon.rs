@@ -2,18 +2,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::{NaiveDateTime, Utc};
-use sea_orm::{
-    ColumnTrait, DbBackend, EntityTrait, FromQueryResult, PaginatorTrait, QueryFilter, QuerySelect,
-    Statement,
-};
+use sea_orm::{ColumnTrait, DbBackend, EntityTrait, FromQueryResult, QueryFilter, Statement};
 use tokio::sync::Notify;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, instrument};
 use ultros_db::UltrosDb;
-use ultros_db::entity::{
-    active_listing, arbitrage_opportunity, player_profile, sale_history, world,
-};
+use ultros_db::entity::{arbitrage_opportunity, player_profile, world};
 
 pub struct ArbitrageDaemon {
     db: UltrosDb,
@@ -30,11 +25,21 @@ struct CandidateOpportunity {
     dest_price: i32,
     source_qty: i32,
     source_timestamp: NaiveDateTime,
+    dest_active_count: i64,
+    units_sold_48h: i64,
 }
 
-#[derive(FromQueryResult)]
-struct UnitsSold {
-    total: Option<i64>,
+#[derive(Default)]
+struct ScanStats {
+    candidates: usize,
+    world_excluded: usize,
+    item_excluded: usize,
+    static_missing: usize,
+    not_marketable: usize,
+    category_rejected: usize,
+    velocity_rejected: usize,
+    gross_profit_rejected: usize,
+    net_profit_rejected: usize,
 }
 
 impl ArbitrageDaemon {
@@ -77,19 +82,29 @@ impl ArbitrageDaemon {
 
 #[instrument(skip(db))]
 async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
+    let scan_started = tokio::time::Instant::now();
     info!("Running DC-wide arbitrage scan for all profiles");
+
     let profiles = player_profile::Entity::find()
         .all(db.get_connection())
         .await?;
+    let profiles_len = profiles.len();
+
+    let marketable_item_ids: Vec<i32> = xiv_gen_db::data()
+        .items
+        .values()
+        .filter(|item| is_market_board_candidate(item))
+        .map(|item| item.key_id.0)
+        .collect();
 
     for profile in profiles {
+        let profile_started = tokio::time::Instant::now();
         let settings = db.get_arbitrage_settings(profile.id).await?;
         let active_dc_id = match profile.active_datacenter_id {
             Some(id) => id,
-            None => continue, // Scopes all market queries by active DC
+            None => continue,
         };
 
-        // Get all worlds in the active DC
         let dc_worlds = world::Entity::find()
             .filter(world::Column::DatacenterId.eq(active_dc_id))
             .all(db.get_connection())
@@ -100,57 +115,82 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
             continue;
         }
 
-        // Apply world exclusion list
-        let excluded_worlds: Vec<i32> = if let Some(val) = &settings.world_exclusion_list {
-            serde_json::from_value(val.clone()).unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-
-        // Category allowlist/blocklist
-        let blocklisted_categories: Vec<i32> = if let Some(val) = &settings.category_blocklist {
-            serde_json::from_value(val.clone()).unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-
-        let allowlisted_categories: Vec<i32> = if let Some(val) = &settings.category_allowlist {
-            serde_json::from_value(val.clone()).unwrap_or_default()
-        } else {
-            Vec::new()
-        };
-
-        // Manual item exclusions
-        let excluded_item_ids: Vec<i32> = if let Some(val) = &settings.excluded_item_ids {
-            serde_json::from_value(val.clone()).unwrap_or_default()
-        } else {
-            Vec::new()
-        };
+        let excluded_worlds: Vec<i32> = settings
+            .world_exclusion_list
+            .as_ref()
+            .and_then(|val| serde_json::from_value(val.clone()).ok())
+            .unwrap_or_default();
+        let blocklisted_categories: Vec<i32> = settings
+            .category_blocklist
+            .as_ref()
+            .and_then(|val| serde_json::from_value(val.clone()).ok())
+            .unwrap_or_default();
+        let allowlisted_categories: Vec<i32> = settings
+            .category_allowlist
+            .as_ref()
+            .and_then(|val| serde_json::from_value(val.clone()).ok())
+            .unwrap_or_default();
+        let excluded_item_ids: Vec<i32> = settings
+            .excluded_item_ids
+            .as_ref()
+            .and_then(|val| serde_json::from_value(val.clone()).ok())
+            .unwrap_or_default();
 
         let max_age_seconds = settings.max_listing_age_hours as i64 * 3600;
         let staleness_cutoff = Utc::now().naive_utc() - chrono::Duration::seconds(max_age_seconds);
+        let sales_cutoff = Utc::now().naive_utc() - chrono::Duration::hours(48);
 
-        // Find candidate opportunities by matching cheapest listing in source world
-        // to destination world cheapest listing (dest is either home_world or DC-wide cheapest).
-        // To do this efficiently at scale, we use a custom SQL query joining active_listing with itself.
-        // We filter out stale source listings (Gate 0).
         let sql = r#"
-            WITH min_prices AS (
+            WITH fresh_listings AS (
+                SELECT item_id, hq, world_id, price_per_unit, quantity, timestamp
+                FROM active_listing
+                WHERE world_id = ANY($1)
+                  AND item_id = ANY($4)
+                  AND timestamp > $2
+                  AND price_per_unit > 0
+            ),
+            min_prices AS (
                 SELECT item_id, hq, world_id, price_per_unit, quantity, timestamp,
                        ROW_NUMBER() OVER(PARTITION BY item_id, hq, world_id ORDER BY price_per_unit ASC, timestamp DESC) as rn
-                FROM active_listing
+                FROM fresh_listings
+            ),
+            active_counts AS (
+                SELECT item_id, hq, world_id, COUNT(*)::bigint AS active_count
+                FROM fresh_listings
+                GROUP BY item_id, hq, world_id
+            ),
+            sales_48h AS (
+                SELECT sold_item_id AS item_id,
+                       hq,
+                       world_id,
+                       SUM(quantity)::bigint AS units_sold,
+                       percentile_cont(0.5) WITHIN GROUP (ORDER BY price_per_item)::integer AS median_sale_price
+                FROM sale_history
+                WHERE world_id = ANY($1)
+                  AND sold_item_id = ANY($4)
+                  AND sold_date > $3
+                  AND price_per_item > 0
+                GROUP BY sold_item_id, hq, world_id
             )
             SELECT s.item_id, s.hq, s.world_id as source_world_id, d.world_id as dest_world_id,
-                   s.price_per_unit as source_price, d.price_per_unit as dest_price,
-                   s.quantity as source_qty, s.timestamp as source_timestamp
+                   s.price_per_unit as source_price,
+                   LEAST(d.price_per_unit, sales.median_sale_price) as dest_price,
+                   s.quantity as source_qty,
+                   s.timestamp as source_timestamp,
+                   active.active_count as dest_active_count,
+                   sales.units_sold as units_sold_48h
             FROM min_prices s
             JOIN min_prices d ON s.item_id = d.item_id AND s.hq = d.hq
-            WHERE s.world_id = ANY($1) AND d.world_id = ANY($2)
+            JOIN active_counts active ON active.item_id = d.item_id
+                                    AND active.hq = d.hq
+                                    AND active.world_id = d.world_id
+            JOIN sales_48h sales ON sales.item_id = d.item_id
+                                AND sales.hq = d.hq
+                                AND sales.world_id = d.world_id
+            WHERE s.world_id = ANY($1) AND d.world_id = ANY($1)
               AND s.world_id != d.world_id
               AND s.rn = 1 AND d.rn = 1
-              AND s.price_per_unit < d.price_per_unit
-              AND s.timestamp > $3
-              AND d.timestamp > $3
+              AND s.price_per_unit < LEAST(d.price_per_unit, sales.median_sale_price)
         "#;
 
         let candidates = CandidateOpportunity::find_by_statement(Statement::from_sql_and_values(
@@ -158,87 +198,79 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
             sql,
             vec![
                 dc_world_ids.clone().into(),
-                dc_world_ids.clone().into(),
                 staleness_cutoff.into(),
+                sales_cutoff.into(),
+                marketable_item_ids.clone().into(),
             ],
         ))
         .all(db.get_connection())
         .await?;
 
         let mut opportunities = Vec::new();
+        let mut stats = ScanStats {
+            candidates: candidates.len(),
+            ..ScanStats::default()
+        };
 
         for cand in candidates {
-            // Apply world exclusions
             if excluded_worlds.contains(&cand.source_world_id)
                 || excluded_worlds.contains(&cand.dest_world_id)
             {
+                stats.world_excluded += 1;
                 continue;
             }
 
-            // Apply item exclusions
             if excluded_item_ids.contains(&cand.item_id) {
+                stats.item_excluded += 1;
                 continue;
             }
 
-            // Lookup item details from static xiv-gen-db
             let item = match xiv_gen_db::data().items.get(&xiv_gen::ItemId(cand.item_id)) {
                 Some(i) => i,
-                None => continue,
+                None => {
+                    stats.static_missing += 1;
+                    continue;
+                }
             };
 
-            // Category filters
+            if !is_market_board_candidate(item) || (cand.hq && !item.can_be_hq) {
+                stats.not_marketable += 1;
+                continue;
+            }
+
             let search_category = item.item_search_category;
             if !allowlisted_categories.is_empty()
                 && !allowlisted_categories.contains(&search_category)
             {
+                stats.category_rejected += 1;
                 continue;
             }
             if blocklisted_categories.contains(&search_category) {
+                stats.category_rejected += 1;
                 continue;
             }
 
-            // Gate 1 — Velocity Filter
-            // Measure sell-side demand on the destination world.
-            let active_count = active_listing::Entity::find()
-                .filter(active_listing::Column::ItemId.eq(cand.item_id))
-                .filter(active_listing::Column::WorldId.eq(cand.dest_world_id))
-                .filter(active_listing::Column::Hq.eq(cand.hq))
-                .count(db.get_connection())
-                .await?;
-
-            if active_count == 0 {
+            if cand.dest_active_count <= 0 {
+                stats.velocity_rejected += 1;
                 continue;
             }
 
-            let sales_cutoff = Utc::now().naive_utc() - chrono::Duration::hours(48);
-            let sales_res = sale_history::Entity::find()
-                .select_only()
-                .column_as(sale_history::Column::Quantity.sum(), "total")
-                .filter(sale_history::Column::SoldItemId.eq(cand.item_id))
-                .filter(sale_history::Column::WorldId.eq(cand.dest_world_id))
-                .filter(sale_history::Column::Hq.eq(cand.hq))
-                .filter(sale_history::Column::SoldDate.gt(sales_cutoff))
-                .into_model::<UnitsSold>()
-                .one(db.get_connection())
-                .await?;
-
-            let units_sold_48h = sales_res.and_then(|r| r.total).unwrap_or(0);
-            let velocity_score = units_sold_48h as f64 / active_count as f64;
+            let velocity_score = cand.units_sold_48h as f64 / cand.dest_active_count as f64;
 
             if velocity_score < settings.velocity_threshold {
-                continue; // Drop below-threshold items
+                stats.velocity_rejected += 1;
+                continue;
             }
 
-            // Gate 2 — Minimum Quantity Filter
             let qty_to_buy = cand.source_qty;
             let gross_profit = (cand.dest_price - cand.source_price) as i64 * qty_to_buy as i64;
             let total_cost = cand.source_price as i64 * qty_to_buy as i64;
 
             if gross_profit < settings.min_profit_total {
-                continue; // Drop if gross profit below the minimum floor
+                stats.gross_profit_rejected += 1;
+                continue;
             }
 
-            // Gate 3 — Travel Cost Deduction
             let travel_minutes = estimate_travel_time(
                 profile.home_world_id.unwrap_or(0),
                 cand.source_world_id,
@@ -248,12 +280,11 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
             let net_profit = gross_profit - travel_deduction;
 
             if net_profit < settings.min_net_profit {
-                continue; // Drop if net profit below threshold
+                stats.net_profit_rejected += 1;
+                continue;
             }
 
-            // Gate 4 — Capital Check
             let over_budget = total_cost > profile.gil_balance;
-
             let listing_age_seconds = Utc::now()
                 .naive_utc()
                 .signed_duration_since(cand.source_timestamp)
@@ -277,26 +308,45 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
             });
         }
 
-        // Save opportunities cache to database
+        let saved = opportunities.len();
         db.save_arbitrage_opportunities(profile.id, opportunities)
             .await?;
         info!(
-            "Saved arbitrage opportunities for profile {}",
-            profile.display_name
+            profile_id = profile.id,
+            profile = %profile.display_name,
+            candidates = stats.candidates,
+            saved,
+            world_excluded = stats.world_excluded,
+            item_excluded = stats.item_excluded,
+            static_missing = stats.static_missing,
+            not_marketable = stats.not_marketable,
+            category_rejected = stats.category_rejected,
+            velocity_rejected = stats.velocity_rejected,
+            gross_profit_rejected = stats.gross_profit_rejected,
+            net_profit_rejected = stats.net_profit_rejected,
+            elapsed_ms = profile_started.elapsed().as_millis(),
+            "Saved arbitrage opportunities"
         );
     }
 
+    info!(
+        profiles_scanned = profiles_len,
+        elapsed_ms = scan_started.elapsed().as_millis(),
+        "Completed DC-wide arbitrage scan"
+    );
     Ok(())
+}
+
+fn is_market_board_candidate(item: &xiv_gen::Item) -> bool {
+    item.item_search_category > 1 && !item.name.trim().is_empty() && item.stack_size > 0
 }
 
 fn estimate_travel_time(home_world: i32, source_world: i32, dest_world: i32) -> i64 {
     if source_world == dest_world {
         if source_world == home_world { 0 } else { 2 }
+    } else if source_world == home_world || dest_world == home_world {
+        2
     } else {
-        if source_world == home_world || dest_world == home_world {
-            2
-        } else {
-            4
-        }
+        4
     }
 }

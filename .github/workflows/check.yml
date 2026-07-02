@@ -1,0 +1,59 @@
+name: Check
+
+on:
+    push:
+        branches:
+            - "**"
+        paths-ignore:
+            - "userguide/**"
+            - "**/*.md"
+            - ".github/workflows/book.yml"
+            - ".github/workflows/book-check.yml"
+    pull_request:
+        branches:
+            - "main"
+        paths-ignore:
+            - "userguide/**"
+            - "**/*.md"
+            - ".github/workflows/book.yml"
+            - ".github/workflows/book-check.yml"
+
+concurrency:
+    group: check-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    check:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4.2.2
+              with:
+                  submodules: recursive
+
+            - name: Install system dependencies
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y --no-install-recommends \
+                      build-essential \
+                      cmake \
+                      libfontconfig1-dev \
+                      libfreetype6-dev \
+                      libssl-dev \
+                      pkg-config
+
+            - name: Cache cargo artifacts
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      target
+                  key: check-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('rust-toolchain') }}
+                  restore-keys: |
+                      check-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+                      check-${{ runner.os }}-
+
+            - name: Run repository checks
+              run: ./check_ci.sh

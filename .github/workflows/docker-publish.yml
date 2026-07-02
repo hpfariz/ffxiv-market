@@ -1,5 +1,9 @@
 name: Docker
 
+concurrency:
+    group: docker-${{ github.ref }}
+    cancel-in-progress: true
+
 on:
     push:
         branches:
@@ -9,17 +13,6 @@ on:
             - "**/*.md"
             - ".github/workflows/book.yml"
             - ".github/workflows/book-check.yml"
-    # PRs build the image to catch Dockerfile breakage early, but never push,
-    # sign, or upload symbols. The `push:` flag below is gated on event_name.
-    pull_request:
-        branches:
-            - "main"
-        paths-ignore:
-            - "userguide/**"
-            - "**/*.md"
-            - ".github/workflows/book.yml"
-            - ".github/workflows/book-check.yml"
-
 env:
     # Use ghcr.io for GitHub Container Registry
     REGISTRY: ghcr.io
