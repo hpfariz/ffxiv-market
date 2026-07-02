@@ -100,11 +100,6 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
             continue;
         }
 
-        // Clear the previous cache before this profile's scan so stale
-        // opportunities are not shown while recomputation is in progress.
-        db.save_arbitrage_opportunities(profile.id, Vec::new())
-            .await?;
-
         // Apply world exclusion list
         let excluded_worlds: Vec<i32> = if let Some(val) = &settings.world_exclusion_list {
             serde_json::from_value(val.clone()).unwrap_or_default()

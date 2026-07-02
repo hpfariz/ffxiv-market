@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
-use crate::alerts::delivery::{send_dm, send_webhook};
+use crate::alerts::delivery::{
+    deliver_non_discord_endpoint, deliver_to_endpoint, send_dm, send_webhook,
+};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 use std::sync::{Arc, Mutex};
@@ -195,6 +197,33 @@ impl MergedAlertManager {
         // Send notification
         let ctx_opt = crate::alerts::delivery::get_serenity_ctx();
         let mut success = false;
+
+        match self.db.list_endpoints(profile.discord_user_id).await {
+            Ok(endpoints) => {
+                for endpoint in endpoints {
+                    let delivered = if let Some(ctx) = &ctx_opt {
+                        deliver_to_endpoint(&endpoint, &title, &body, &self.db, ctx).await
+                    } else {
+                        deliver_non_discord_endpoint(&endpoint, &title, &body, &self.db).await
+                    };
+
+                    if let Err(e) = delivered {
+                        error!(
+                            "Failed to send endpoint alert for profile {} endpoint {}: {}",
+                            profile.id, endpoint.id, e
+                        );
+                    } else {
+                        success = true;
+                    }
+                }
+            }
+            Err(e) => {
+                error!(
+                    "Failed to load notification endpoints for profile {}: {}",
+                    profile.id, e
+                );
+            }
+        }
 
         if let Some(webhook_url) = &profile.alert_channel_webhook
             && !webhook_url.trim().is_empty()

@@ -1,4 +1,5 @@
 use crate::api::*;
+use crate::components::endpoints_panel::EndpointsPanel;
 use crate::components::icon::Icon;
 use crate::components::item_icon::{IconSize, ItemIcon};
 use crate::components::world_name::WorldName;
@@ -959,15 +960,31 @@ fn CraftingView(profile_id: Option<i32>) -> impl IntoView {
     let (opportunities, set_opportunities) = signal(Vec::<CraftingOpportunity>::new());
     let (expanded_recipe, set_expanded_recipe) = signal(None::<i32>);
     let (show_all_levels, set_show_all_levels) = signal(false);
+    let (loading, set_loading) = signal(true);
+    let (load_error, set_load_error) = signal(None::<String>);
 
     Effect::new(move |_| {
         if let Some(pid) = profile_id {
             let show_all = show_all_levels();
+            set_loading(true);
+            set_load_error(None);
             spawn_local(async move {
-                if let Ok(list) = get_crafting_opportunities_api(pid, show_all).await {
-                    set_opportunities(list);
+                match get_crafting_opportunities_api(pid, show_all).await {
+                    Ok(list) => {
+                        set_opportunities(list);
+                        set_load_error(None);
+                    }
+                    Err(err) => {
+                        set_opportunities(Vec::new());
+                        set_load_error(Some(format!("{err:?}")));
+                    }
                 }
+                set_loading(false);
             });
+        } else {
+            set_opportunities(Vec::new());
+            set_load_error(Some("No active profile selected.".to_string()));
+            set_loading(false);
         }
     });
 
@@ -987,68 +1004,91 @@ fn CraftingView(profile_id: Option<i32>) -> impl IntoView {
             </div>
 
             <div class="space-y-4">
-                {move || opportunities().into_iter().map(|opp| {
-                    let is_expanded = expanded_recipe() == Some(opp.recipe_id);
-                    let rid = opp.recipe_id;
-                    view! {
-                        <div class="border border-white/5 rounded-xl overflow-hidden hover:border-violet-500/20 transition-all bg-zinc-950/20">
-                            <div
-                                class="p-4 flex flex-wrap justify-between items-center gap-4 cursor-pointer"
-                                on:click=move |_| {
-                                    if is_expanded {
-                                        set_expanded_recipe(None);
-                                    } else {
-                                        set_expanded_recipe(Some(rid));
-                                    }
-                                }
-                            >
-                                <div class="flex items-center gap-3">
-                                    <span class="text-violet-400"><Icon icon=i::BiChevronDownRegular attr:class=if is_expanded { "rotate-180 transition-transform" } else { "transition-transform" } /></span>
-                                    <div>
-                                        <div class="font-bold text-gray-200">{opp.name.clone()}</div>
-                                        <div class="text-xs text-gray-400">{format!("Level {} Class #{}", opp.level, opp.craft_type)}</div>
-                                    </div>
-                                </div>
-
-                                <div class="flex items-center gap-6 text-sm">
-                                    <div>"BOM Material Cost: " <span class="text-gray-300 font-semibold">{format!("{} Gil", opp.material_cost.separate_with_commas())}</span></div>
-                                    <div>"Sell Price: " <span class="text-gray-300 font-semibold">{format!("{} Gil", opp.sell_price.separate_with_commas())}</span></div>
-                                    <div>"Net Profit: " <span class="text-emerald-400 font-bold">{format!("{} Gil", opp.net_profit.separate_with_commas())}</span></div>
-                                    <div class="flex gap-1">
-                                        {opp.flags.clone().into_iter().map(|f| view! {
-                                            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-fuchsia-400/10 text-fuchsia-300 border border-fuchsia-400/20">{f}</span>
-                                        }).collect::<Vec<_>>()}
-                                    </div>
-                                </div>
+                {move || {
+                    let opportunities = opportunities();
+                    if let Some(error) = load_error() {
+                        vec![view! {
+                            <div class="py-8 text-center text-sm text-rose-300">
+                                {format!("Could not load crafting opportunities: {error}")}
                             </div>
-
-                            // Bill of Materials breakdown
-                            {move || is_expanded.then(|| view! {
-                                <div class="px-6 pb-4 pt-2 border-t border-white/5 bg-zinc-950/40 text-xs">
-                                    <h4 class="font-semibold text-violet-300 uppercase tracking-wider text-[10px] mb-3">"Bill of Materials & Sub-Craft Savings Path"</h4>
-                                    <div class="space-y-2">
-                                        {opp.ingredients.clone().into_iter().map(|ing| view! {
-                                            <div class="flex justify-between items-center py-1 border-b border-white/5">
-                                                <div>
-                                                    <span class="font-medium text-gray-300">{ing.name.clone()}</span>
-                                                    <span class="text-gray-500 font-mono ml-2">"x" {ing.quantity}</span>
-                                                </div>
-                                                <div class="flex items-center gap-4">
-                                                    <span class="text-gray-400 font-mono">{format!("{} Gil/unit", ing.cost_per_unit)}</span>
-                                                    <span class=format!("px-2 py-0.5 rounded text-[10px] font-bold {}",
-                                                        if ing.path == "Craft" { "bg-emerald-400/10 text-emerald-300 border border-emerald-400/20" } else { "bg-zinc-800 text-zinc-400 border border-zinc-700" })>
-                                                        {ing.path.clone()}
-                                                    </span>
-                                                    <span class="font-semibold text-gray-200 font-mono min-w-[70px] text-right">{format!("{} Gil", ing.total_cost.separate_with_commas())}</span>
-                                                </div>
+                        }.into_any()]
+                    } else if loading() {
+                        vec![view! {
+                            <div class="py-8 text-center text-sm text-gray-400">
+                                "Loading crafting opportunities..."
+                            </div>
+                        }.into_any()]
+                    } else if opportunities.is_empty() {
+                        vec![view! {
+                            <div class="py-8 text-center text-sm text-gray-400">
+                                "No crafting opportunities match the current profile and filters yet."
+                            </div>
+                        }.into_any()]
+                    } else {
+                        opportunities.into_iter().map(|opp| {
+                            let is_expanded = expanded_recipe() == Some(opp.recipe_id);
+                            let rid = opp.recipe_id;
+                            view! {
+                                <div class="border border-white/5 rounded-xl overflow-hidden hover:border-violet-500/20 transition-all bg-zinc-950/20">
+                                    <div
+                                        class="p-4 flex flex-wrap justify-between items-center gap-4 cursor-pointer"
+                                        on:click=move |_| {
+                                            if is_expanded {
+                                                set_expanded_recipe(None);
+                                            } else {
+                                                set_expanded_recipe(Some(rid));
+                                            }
+                                        }
+                                    >
+                                        <div class="flex items-center gap-3">
+                                            <span class="text-violet-400"><Icon icon=i::BiChevronDownRegular attr:class=if is_expanded { "rotate-180 transition-transform" } else { "transition-transform" } /></span>
+                                            <div>
+                                                <div class="font-bold text-gray-200">{opp.name.clone()}</div>
+                                                <div class="text-xs text-gray-400">{format!("Level {} Class #{}", opp.level, opp.craft_type)}</div>
                                             </div>
-                                        }).collect::<Vec<_>>()}
+                                        </div>
+
+                                        <div class="flex items-center gap-6 text-sm">
+                                            <div>"BOM Material Cost: " <span class="text-gray-300 font-semibold">{format!("{} Gil", opp.material_cost.separate_with_commas())}</span></div>
+                                            <div>"Sell Price: " <span class="text-gray-300 font-semibold">{format!("{} Gil", opp.sell_price.separate_with_commas())}</span></div>
+                                            <div>"Net Profit: " <span class="text-emerald-400 font-bold">{format!("{} Gil", opp.net_profit.separate_with_commas())}</span></div>
+                                            <div class="flex gap-1">
+                                                {opp.flags.clone().into_iter().map(|f| view! {
+                                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-fuchsia-400/10 text-fuchsia-300 border border-fuchsia-400/20">{f}</span>
+                                                }).collect::<Vec<_>>()}
+                                            </div>
+                                        </div>
                                     </div>
+
+                                    // Bill of Materials breakdown
+                                    {move || is_expanded.then(|| view! {
+                                        <div class="px-6 pb-4 pt-2 border-t border-white/5 bg-zinc-950/40 text-xs">
+                                            <h4 class="font-semibold text-violet-300 uppercase tracking-wider text-[10px] mb-3">"Bill of Materials & Sub-Craft Savings Path"</h4>
+                                            <div class="space-y-2">
+                                                {opp.ingredients.clone().into_iter().map(|ing| view! {
+                                                    <div class="flex justify-between items-center py-1 border-b border-white/5">
+                                                        <div>
+                                                            <span class="font-medium text-gray-300">{ing.name.clone()}</span>
+                                                            <span class="text-gray-500 font-mono ml-2">"x" {ing.quantity}</span>
+                                                        </div>
+                                                        <div class="flex items-center gap-4">
+                                                            <span class="text-gray-400 font-mono">{format!("{} Gil/unit", ing.cost_per_unit)}</span>
+                                                            <span class=format!("px-2 py-0.5 rounded text-[10px] font-bold {}",
+                                                                if ing.path == "Craft" { "bg-emerald-400/10 text-emerald-300 border border-emerald-400/20" } else { "bg-zinc-800 text-zinc-400 border border-zinc-700" })>
+                                                                {ing.path.clone()}
+                                                            </span>
+                                                            <span class="font-semibold text-gray-200 font-mono min-w-[70px] text-right">{format!("{} Gil", ing.total_cost.separate_with_commas())}</span>
+                                                        </div>
+                                                    </div>
+                                                }).collect::<Vec<_>>()}
+                                            </div>
+                                        </div>
+                                    })}
                                 </div>
-                            })}
-                        </div>
+                            }.into_any()
+                        }).collect::<Vec<_>>()
                     }
-                }).collect::<Vec<_>>()}
+                }}
             </div>
         </div>
     }
@@ -1059,16 +1099,34 @@ fn GatheringView(profile_id: Option<i32>) -> impl IntoView {
     let (normal_items, set_normal_items) = signal(Vec::<GatheringNodeDetail>::new());
     let (timed_items, set_timed_items) = signal(Vec::<TimedNodeDetail>::new());
     let (show_all_levels, set_show_all_levels) = signal(false);
+    let (loading, set_loading) = signal(true);
+    let (load_error, set_load_error) = signal(None::<String>);
 
     Effect::new(move |_| {
         if let Some(pid) = profile_id {
             let show_all = show_all_levels();
+            set_loading(true);
+            set_load_error(None);
             spawn_local(async move {
-                if let Ok((normal, timed)) = get_gathering_routes_api(pid, show_all).await {
-                    set_normal_items(normal);
-                    set_timed_items(timed);
+                match get_gathering_routes_api(pid, show_all).await {
+                    Ok((normal, timed)) => {
+                        set_normal_items(normal);
+                        set_timed_items(timed);
+                        set_load_error(None);
+                    }
+                    Err(err) => {
+                        set_normal_items(Vec::new());
+                        set_timed_items(Vec::new());
+                        set_load_error(Some(format!("{err:?}")));
+                    }
                 }
+                set_loading(false);
             });
+        } else {
+            set_normal_items(Vec::new());
+            set_timed_items(Vec::new());
+            set_load_error(Some("No active profile selected.".to_string()));
+            set_loading(false);
         }
     });
 
@@ -1100,15 +1158,32 @@ fn GatheringView(profile_id: Option<i32>) -> impl IntoView {
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
-                            {move || normal_items().into_iter().map(|item| view! {
-                                <tr class="hover:bg-white/5 transition-colors">
-                                    <td class="py-2 px-3 font-semibold text-gray-200">{item.name.clone()}</td>
-                                    <td class="py-2 px-3">{item.class_kind.clone()}</td>
-                                    <td class="py-2 px-3 font-mono">{item.level}</td>
-                                    <td class="py-2 px-3 text-emerald-400 font-semibold font-mono">{format!("{} Gil", item.unit_price.separate_with_commas())}</td>
-                                    <td class="py-2 px-3 text-violet-400 font-bold font-mono">{format!("{:.1}", item.node_score)}</td>
-                                </tr>
-                            }).collect::<Vec<_>>()}
+                            {move || {
+                                let items = normal_items();
+                                if let Some(error) = load_error() {
+                                    vec![view! {
+                                        <tr><td colspan="5" class="py-6 px-3 text-center text-rose-300">{format!("Could not load routes: {error}")}</td></tr>
+                                    }.into_any()]
+                                } else if loading() {
+                                    vec![view! {
+                                        <tr><td colspan="5" class="py-6 px-3 text-center text-gray-400">"Loading gathering routes..."</td></tr>
+                                    }.into_any()]
+                                } else if items.is_empty() {
+                                    vec![view! {
+                                        <tr><td colspan="5" class="py-6 px-3 text-center text-gray-400">"No always-available nodes match the current profile and filters."</td></tr>
+                                    }.into_any()]
+                                } else {
+                                    items.into_iter().map(|item| view! {
+                                        <tr class="hover:bg-white/5 transition-colors">
+                                            <td class="py-2 px-3 font-semibold text-gray-200">{item.name.clone()}</td>
+                                            <td class="py-2 px-3">{item.class_kind.clone()}</td>
+                                            <td class="py-2 px-3 font-mono">{item.level}</td>
+                                            <td class="py-2 px-3 text-emerald-400 font-semibold font-mono">{format!("{} Gil", item.unit_price.separate_with_commas())}</td>
+                                            <td class="py-2 px-3 text-violet-400 font-bold font-mono">{format!("{:.1}", item.node_score)}</td>
+                                        </tr>
+                                    }.into_any()).collect::<Vec<_>>()
+                                }
+                            }}
                         </tbody>
                     </table>
                 </div>
@@ -1130,16 +1205,33 @@ fn GatheringView(profile_id: Option<i32>) -> impl IntoView {
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
-                            {move || timed_items().into_iter().map(|item| view! {
-                                <tr class="hover:bg-white/5 transition-colors">
-                                    <td class="py-2 px-3 font-semibold text-gray-200">{item.name.clone()}</td>
-                                    <td class="py-2 px-3">{item.class_kind.clone()}</td>
-                                    <td class="py-2 px-3 font-mono">{item.level}</td>
-                                    <td class="py-2 px-3 text-amber-300 font-semibold">{item.next_spawn_local.clone()}</td>
-                                    <td class="py-2 px-3 font-mono">{item.duration_hours} "h ET"</td>
-                                    <td class="py-2 px-3 text-violet-400 font-bold font-mono">{format!("{:.1}", item.node_score)}</td>
-                                </tr>
-                            }).collect::<Vec<_>>()}
+                            {move || {
+                                let items = timed_items();
+                                if let Some(error) = load_error() {
+                                    vec![view! {
+                                        <tr><td colspan="6" class="py-6 px-3 text-center text-rose-300">{format!("Could not load timed nodes: {error}")}</td></tr>
+                                    }.into_any()]
+                                } else if loading() {
+                                    vec![view! {
+                                        <tr><td colspan="6" class="py-6 px-3 text-center text-gray-400">"Loading timed nodes..."</td></tr>
+                                    }.into_any()]
+                                } else if items.is_empty() {
+                                    vec![view! {
+                                        <tr><td colspan="6" class="py-6 px-3 text-center text-gray-400">"No timed nodes match the current profile and filters."</td></tr>
+                                    }.into_any()]
+                                } else {
+                                    items.into_iter().map(|item| view! {
+                                        <tr class="hover:bg-white/5 transition-colors">
+                                            <td class="py-2 px-3 font-semibold text-gray-200">{item.name.clone()}</td>
+                                            <td class="py-2 px-3">{item.class_kind.clone()}</td>
+                                            <td class="py-2 px-3 font-mono">{item.level}</td>
+                                            <td class="py-2 px-3 text-amber-300 font-semibold">{item.next_spawn_local.clone()}</td>
+                                            <td class="py-2 px-3 font-mono">{item.duration_hours} "h ET"</td>
+                                            <td class="py-2 px-3 text-violet-400 font-bold font-mono">{format!("{:.1}", item.node_score)}</td>
+                                        </tr>
+                                    }.into_any()).collect::<Vec<_>>()
+                                }
+                            }}
                         </tbody>
                     </table>
                 </div>
@@ -1160,12 +1252,10 @@ fn SettingsView(
     let (vel_thresh, set_vel_thresh) = signal(0.0f64);
     let (travel_rate, set_travel_rate) = signal(0i64);
     let (min_profit_t, set_min_profit_t) = signal(0i64);
-    let (webhook_url, set_webhook_url) = signal("".to_string());
 
     let profile_for_effect = profile.clone();
     Effect::new(move |_| {
         if let Some(p) = &profile_for_effect {
-            set_webhook_url(p.alert_channel_webhook.clone().unwrap_or_default());
             let pid = p.id;
             spawn_local(async move {
                 if let Ok(settings) = get_arbitrage_settings(pid).await {
@@ -1194,14 +1284,12 @@ fn SettingsView(
     let save_settings = move |_| {
         if let Some(p) = &profile_for_save {
             let pid = p.id;
-            let wh = webhook_url();
             let min_p = min_profit();
             let vel = vel_thresh();
             let tr = travel_rate();
             let min_pt = min_profit_t();
 
             spawn_local(async move {
-                let _ = update_profile(pid, json!({ "alert_channel_webhook": Some(wh) })).await;
                 let _ = update_arbitrage_settings(
                     pid,
                     json!({
@@ -1280,14 +1368,8 @@ fn SettingsView(
                 <h3 class="text-lg font-bold text-gray-100">"Arbitrage Gates & Alerts Settings"</h3>
 
                 <div class="space-y-4 text-sm">
-                    <div>
-                        <label class="block text-gray-400 font-semibold mb-1">"Discord Alert Webhook URL"</label>
-                        <input
-                            type="text"
-                            class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
-                            prop:value=webhook_url
-                            on:input=move |ev| set_webhook_url(event_target_value(&ev))
-                        />
+                    <div class="rounded-xl border border-white/10 bg-zinc-950/30 p-4">
+                        <EndpointsPanel />
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
