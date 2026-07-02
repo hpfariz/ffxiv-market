@@ -89,52 +89,72 @@ pub(crate) async fn generic_pages_sitemap() -> Result<Xml, WebError> {
     // and other login-gated or user-state pages — they emit `<meta robots
     // noindex>` from the route and don't belong in the sitemap.
     let tool_pages: &[(&str, f32, ChangeFrequency)] = &[
-        ("https://ultros.app/", 1.0, ChangeFrequency::Hourly),
-        ("https://ultros.app/items", 0.9, ChangeFrequency::Daily),
+        ("https://ultros.app/market", 1.0, ChangeFrequency::Hourly),
         (
-            "https://ultros.app/flip-finder",
+            "https://ultros.app/market/items",
+            0.9,
+            ChangeFrequency::Daily,
+        ),
+        (
+            "https://ultros.app/market/flip-finder",
             0.9,
             ChangeFrequency::Hourly,
         ),
         (
-            "https://ultros.app/vendor-resale",
+            "https://ultros.app/market/vendor-resale",
             0.8,
             ChangeFrequency::Daily,
         ),
         (
-            "https://ultros.app/recipe-analyzer",
+            "https://ultros.app/market/recipe-analyzer",
             0.8,
             ChangeFrequency::Daily,
         ),
         (
-            "https://ultros.app/leve-analyzer",
+            "https://ultros.app/market/leve-analyzer",
             0.7,
             ChangeFrequency::Weekly,
         ),
         (
-            "https://ultros.app/venture-analyzer",
+            "https://ultros.app/market/venture-analyzer",
             0.7,
             ChangeFrequency::Weekly,
         ),
         (
-            "https://ultros.app/fc-crafting-analyzer",
+            "https://ultros.app/market/fc-crafting-analyzer",
             0.7,
             ChangeFrequency::Daily,
         ),
         (
-            "https://ultros.app/scrip-sources",
+            "https://ultros.app/market/scrip-sources",
             0.7,
             ChangeFrequency::Weekly,
         ),
         (
-            "https://ultros.app/currency-exchange",
+            "https://ultros.app/market/currency-exchange",
             0.7,
             ChangeFrequency::Daily,
         ),
-        ("https://ultros.app/trends", 0.8, ChangeFrequency::Hourly),
-        ("https://ultros.app/bot", 0.6, ChangeFrequency::Monthly),
-        ("https://ultros.app/about", 0.5, ChangeFrequency::Monthly),
-        ("https://ultros.app/help", 0.6, ChangeFrequency::Monthly),
+        (
+            "https://ultros.app/market/trends",
+            0.8,
+            ChangeFrequency::Hourly,
+        ),
+        (
+            "https://ultros.app/market/bot",
+            0.6,
+            ChangeFrequency::Monthly,
+        ),
+        (
+            "https://ultros.app/market/about",
+            0.5,
+            ChangeFrequency::Monthly,
+        ),
+        (
+            "https://ultros.app/market/help",
+            0.6,
+            ChangeFrequency::Monthly,
+        ),
     ];
 
     let mut urls: Vec<Url> = tool_pages
@@ -176,8 +196,13 @@ pub(crate) async fn generic_pages_sitemap() -> Result<Xml, WebError> {
     // Class/jobset pages — medium priority, weekly change frequency
     // because the items in them only shift when expansions/patches add gear.
     for class in data.class_jobs.values() {
-        let mut builder =
-            Url::builder(["https://ultros.app/items/jobset/", &class.abbreviation].concat());
+        let mut builder = Url::builder(
+            [
+                "https://ultros.app/market/items/jobset/",
+                &class.abbreviation,
+            ]
+            .concat(),
+        );
         builder.priority(0.6);
         builder.change_frequency(ChangeFrequency::Weekly);
         if let Ok(url) = builder.build() {
@@ -190,7 +215,8 @@ pub(crate) async fn generic_pages_sitemap() -> Result<Xml, WebError> {
         .values()
         .filter(|cat| (1..=4).contains(&cat.category))
     {
-        let mut builder = Url::builder(["https://ultros.app/items/category/", &cat.name].concat());
+        let mut builder =
+            Url::builder(["https://ultros.app/market/items/category/", &cat.name].concat());
         builder.priority(0.6);
         builder.change_frequency(ChangeFrequency::Weekly);
         if let Ok(url) = builder.build() {
@@ -231,7 +257,7 @@ pub(crate) async fn world_sitemap(
         items
             .iter()
             .map(|i| {
-                Url::builder(format!("https://ultros.app/item/{world_name}/{i}"))
+                Url::builder(format!("https://ultros.app/market/item/{world_name}/{i}"))
                     .build()
                     .unwrap()
             })
@@ -313,7 +339,7 @@ pub(crate) async fn item_sitemap(
             .map(|(key, _)| key.0)
             .sorted()
             .map(|id| {
-                let mut builder = Url::builder(format!("https://ultros.app/item/{id}"));
+                let mut builder = Url::builder(format!("https://ultros.app/market/item/{id}"));
                 // Items with recent sales get higher priority than dead-stock
                 // items — same /item sitemap entry, but signal to crawlers
                 // that the page changes meaningfully more often. Dead items

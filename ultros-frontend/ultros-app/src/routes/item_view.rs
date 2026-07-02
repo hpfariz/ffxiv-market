@@ -1284,7 +1284,7 @@ pub fn ItemView() -> impl IntoView {
             property="thumbnail"
             content=move || format!("https://ultros.app/static/itemicon/{}?size=Large", item_id())
         />
-        <Link rel="canonical" prop:href=move || format!("https://ultros.app/item/{}", item_id()) />
+        <Link rel="canonical" prop:href=move || format!("https://ultros.app/market/item/{}", item_id()) />
         <div class="min-h-screen">
             <div class="w-full px-0 sm:px-4 pt-4 sm:pt-5 pb-3">
                 <div class="flex flex-col gap-4 p-3 sm:p-4 border-b border-[color:var(--color-outline)] pb-6">

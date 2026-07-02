@@ -12,6 +12,19 @@ This repository enforces strict CI checks. Before committing any code, you **mus
 
 Failure to follow these steps will result in CI failures.
 
+## Deployment rule
+
+Do **not** deploy normal application code by copying files to the VM and running `docker build` on the server.
+
+Production deploys must use the GitHub Actions Docker pipeline for `hpfariz/ffxiv-market`:
+
+1. Commit the intended changes locally after `./check_ci.sh` passes.
+2. Push to the `hpfariz/ffxiv-market` `main` branch.
+3. Let `.github/workflows/docker-publish.yml` build and publish `ghcr.io/hpfariz/ffxiv-market:main`.
+4. Let the workflow deploy job SSH to the VM and run `docker compose pull ultros && docker compose up -d ultros`.
+
+The VM path `/home/ubuntu/apps/ffxiv-market` is a runtime deployment directory, not the source of truth for code changes. Direct VM builds are allowed only for an explicitly approved emergency hotfix, and the reason must be stated to the user before doing it.
+
 ## Git hooks (optional but recommended)
 
 Tracked hooks live under `scripts/hooks/`. One-time install:

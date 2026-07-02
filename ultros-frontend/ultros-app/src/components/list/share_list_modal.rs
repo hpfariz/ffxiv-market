@@ -37,10 +37,10 @@ pub(crate) fn invite_url(invite_id: &str) -> String {
         if let Some(window) = web_sys::window()
             && let Ok(origin) = window.location().origin()
         {
-            return format!("{origin}/list/invite/{invite_id}");
+            return format!("{origin}/market/list/invite/{invite_id}");
         }
     }
-    format!("/list/invite/{invite_id}")
+    format!("/market/list/invite/{invite_id}")
 }
 
 pub(crate) fn copy_invite_url(

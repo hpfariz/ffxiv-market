@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::{
         IntoResponse,
         sse::{Event, Sse},
@@ -74,6 +74,18 @@ pub struct HealthResponse {
     pub lag_seconds: Option<i64>,
 }
 
+#[derive(Serialize)]
+pub struct ProfileSetupStatus {
+    pub complete: bool,
+    pub missing: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct OpportunityQuery {
+    #[serde(default)]
+    pub show_all_levels: bool,
+}
+
 // Helpers
 async fn check_profile_owner(
     db: &UltrosDb,
@@ -91,6 +103,53 @@ async fn check_profile_owner(
         .into());
     }
     Ok(profile)
+}
+
+async fn profile_setup_status(
+    db: &UltrosDb,
+    profile: &player_profile::Model,
+) -> Result<ProfileSetupStatus, ApiError> {
+    let mut missing = Vec::new();
+
+    if profile.home_world_id.is_none() {
+        missing.push("home_world".to_string());
+    }
+    if profile.active_datacenter_id.is_none() {
+        missing.push("active_datacenter".to_string());
+    }
+    if profile.gil_balance <= 0 {
+        missing.push("gil_balance".to_string());
+    }
+
+    let arbitrage = db.get_arbitrage_settings(profile.id).await?;
+    if arbitrage.min_net_profit <= 0 {
+        missing.push("arbitrage_min_net_profit".to_string());
+    }
+    if arbitrage.velocity_threshold <= 0.0 {
+        missing.push("arbitrage_velocity_threshold".to_string());
+    }
+    if arbitrage.min_profit_total <= 0 {
+        missing.push("arbitrage_min_profit_total".to_string());
+    }
+
+    Ok(ProfileSetupStatus {
+        complete: missing.is_empty(),
+        missing,
+    })
+}
+
+async fn require_profile_setup(
+    db: &UltrosDb,
+    profile: &player_profile::Model,
+) -> Result<(), ApiError> {
+    let status = profile_setup_status(db, profile).await?;
+    if !status.complete {
+        return Err(anyhow::Error::new(ListError::BadRequest(
+            "Profile setup must be completed before recommendations are available",
+        ))
+        .into());
+    }
+    Ok(())
 }
 
 // Route Handlers
@@ -120,9 +179,20 @@ pub async fn get_profile(
     Ok(Json(profile))
 }
 
+pub async fn get_profile_setup_status(
+    user: AuthDiscordUser,
+    State(db): State<UltrosDb>,
+    Path(id): Path<i32>,
+) -> Result<Json<ProfileSetupStatus>, ApiError> {
+    let profile = check_profile_owner(&db, id, user.id as i64).await?;
+    let status = profile_setup_status(&db, &profile).await?;
+    Ok(Json(status))
+}
+
 pub async fn update_profile(
     user: AuthDiscordUser,
     State(db): State<UltrosDb>,
+    State(arbitrage_trigger): State<Arc<tokio::sync::Notify>>,
     Path(id): Path<i32>,
     Json(payload): Json<ProfileUpdatePayload>,
 ) -> Result<Json<player_profile::Model>, ApiError> {
@@ -158,6 +228,7 @@ pub async fn update_profile(
     }
 
     let updated = db.update_profile(id, active_model).await?;
+    arbitrage_trigger.notify_one();
     Ok(Json(updated))
 }
 
@@ -205,6 +276,7 @@ pub async fn get_arbitrage_settings(
 pub async fn update_arbitrage_settings(
     user: AuthDiscordUser,
     State(db): State<UltrosDb>,
+    State(arbitrage_trigger): State<Arc<tokio::sync::Notify>>,
     Path(id): Path<i32>,
     Json(payload): Json<ArbitrageSettingsPayload>,
 ) -> Result<Json<profile_arbitrage_settings::Model>, ApiError> {
@@ -225,6 +297,7 @@ pub async fn update_arbitrage_settings(
     };
 
     let updated = db.update_arbitrage_settings(id, active_model).await?;
+    arbitrage_trigger.notify_one();
     Ok(Json(updated))
 }
 
@@ -304,7 +377,8 @@ pub async fn get_arbitrage_opportunities(
     State(db): State<UltrosDb>,
     Path(id): Path<i32>,
 ) -> Result<Json<Vec<arbitrage_opportunity::Model>>, ApiError> {
-    let _ = check_profile_owner(&db, id, user.id as i64).await?;
+    let profile = check_profile_owner(&db, id, user.id as i64).await?;
+    require_profile_setup(&db, &profile).await?;
     let opportunities = db.get_arbitrage_opportunities(id).await?;
     Ok(Json(opportunities))
 }
@@ -313,10 +387,14 @@ pub async fn get_crafting_opportunities(
     user: AuthDiscordUser,
     State(db): State<UltrosDb>,
     Path(id): Path<i32>,
+    Query(query): Query<OpportunityQuery>,
 ) -> Result<Json<Vec<crate::worker::crafting_engine::CraftingOpportunity>>, ApiError> {
-    let _ = check_profile_owner(&db, id, user.id as i64).await?;
+    let profile = check_profile_owner(&db, id, user.id as i64).await?;
+    require_profile_setup(&db, &profile).await?;
     let engine = crate::worker::crafting_engine::CraftingEngine::new(db.clone());
-    let opportunities = engine.compute_crafting_opportunities(id, false).await?;
+    let opportunities = engine
+        .compute_crafting_opportunities(id, query.show_all_levels)
+        .await?;
     Ok(Json(opportunities))
 }
 
@@ -324,6 +402,7 @@ pub async fn get_gathering_routes(
     user: AuthDiscordUser,
     State(db): State<UltrosDb>,
     Path(id): Path<i32>,
+    Query(query): Query<OpportunityQuery>,
 ) -> Result<
     Json<(
         Vec<crate::worker::gathering_optimizer::GatheringNodeDetail>,
@@ -331,9 +410,12 @@ pub async fn get_gathering_routes(
     )>,
     ApiError,
 > {
-    let _ = check_profile_owner(&db, id, user.id as i64).await?;
+    let profile = check_profile_owner(&db, id, user.id as i64).await?;
+    require_profile_setup(&db, &profile).await?;
     let optimizer = crate::worker::gathering_optimizer::GatheringOptimizer::new(db.clone());
-    let routes = optimizer.optimize_gathering_routes(id, false).await?;
+    let routes = optimizer
+        .optimize_gathering_routes(id, query.show_all_levels)
+        .await?;
     Ok(Json(routes))
 }
 

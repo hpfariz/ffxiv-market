@@ -137,7 +137,7 @@ pub fn Welcome() -> impl IntoView {
                 // CTA
                 <div class="flex flex-wrap items-center justify-between gap-4 pt-2">
                     <A
-                        href="/"
+                        href="/market"
                         attr:class="btn-ghost py-3 px-6"
                     >
                         {t!(i18n, welcome_skip_for_now)}
@@ -150,7 +150,7 @@ pub fn Welcome() -> impl IntoView {
                             "btn-primary py-3 px-6 text-lg opacity-50 pointer-events-none"
                         };
                         view! {
-                            <A href="/" attr:class=class attr:aria-disabled=move || (!enabled).then_some("true")>
+                            <A href="/market" attr:class=class attr:aria-disabled=move || (!enabled).then_some("true")>
                                 <span>{t!(i18n, welcome_continue_cta)}</span>
                                 <Icon icon=i::FaArrowRightSolid width="1em" height="1em" />
                             </A>

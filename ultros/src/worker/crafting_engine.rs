@@ -121,19 +121,19 @@ impl CraftingEngine {
             // CRP = 8, BSM = 9, ARM = 10, GSM = 11, LTW = 12, WVR = 13, ALC = 14, CUL = 15
             let class_job_id = craft_type + 8;
 
-            if !show_all_levels {
-                let player_level = crafter_levels.get(&class_job_id).cloned().unwrap_or(0);
+            // Lookup recipe level requirement from recipe_level_tables
+            let recipe_level = data
+                .recipe_level_tables
+                .get(&xiv_gen::RecipeLevelTableId(recipe.recipe_level_table))
+                .map(|r| r.class_job_level as i32)
+                .unwrap_or(1);
 
-                // Lookup recipe level requirement from recipe_level_tables
-                let recipe_level = data
-                    .recipe_level_tables
-                    .get(&xiv_gen::RecipeLevelTableId(recipe.recipe_level_table))
-                    .map(|r| r.class_job_level as i32)
-                    .unwrap_or(1);
-
-                if player_level < recipe_level {
-                    continue; // Skip recipes above level
-                }
+            if !show_all_levels
+                && crafter_levels
+                    .get(&class_job_id)
+                    .is_some_and(|player_level| *player_level < recipe_level)
+            {
+                continue; // Skip recipes above level
             }
 
             let result_item = match data.items.get(&xiv_gen::ItemId(recipe.item_result)) {

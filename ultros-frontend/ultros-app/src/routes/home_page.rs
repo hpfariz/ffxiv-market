@@ -35,22 +35,22 @@ const HOME_JSON_LD: &str = r#"{
   "@graph": [
     {
       "@type": "WebSite",
-      "@id": "https://ultros.app/#website",
-      "url": "https://ultros.app/",
+      "@id": "https://ultros.app/market#website",
+      "url": "https://ultros.app/market",
       "name": "Ultros",
       "description": "FFXIV market board analytics, retainer tracking, crafting profit calculators, and Discord alerts for Final Fantasy XIV.",
       "inLanguage": "en",
-      "publisher": {"@type": "Organization", "name": "Ultros", "url": "https://ultros.app/"},
+      "publisher": {"@type": "Organization", "name": "Ultros", "url": "https://ultros.app/market"},
       "potentialAction": {
         "@type": "SearchAction",
-        "target": {"@type": "EntryPoint", "urlTemplate": "https://ultros.app/items?search={search_term_string}"},
+        "target": {"@type": "EntryPoint", "urlTemplate": "https://ultros.app/market/items?search={search_term_string}"},
         "query-input": "required name=search_term_string"
       }
     },
     {
       "@type": "SoftwareApplication",
       "name": "Ultros",
-      "url": "https://ultros.app/",
+      "url": "https://ultros.app/market",
       "description": "Final Fantasy XIV market board analytics — flip finder, recipe profit calculator, retainer undercut alerts, and Discord bot integration.",
       "applicationCategory": "WebApplication",
       "operatingSystem": "Web",
@@ -142,7 +142,7 @@ pub fn HomePage() -> impl IntoView {
         <MetaTitle title=move || t_string!(i18n, meta_title).to_string() />
         <MetaDescription text=move || t_string!(i18n, meta_description).to_string() />
         <MetaImage url="https://ultros.app/static/fallback-image.png" />
-        <MetaCanonical href="https://ultros.app/" />
+        <MetaCanonical href="https://ultros.app/market" />
         <Script type_="application/ld+json">{HOME_JSON_LD}</Script>
         <div class="main-content p-2 sm:p-6">
             <div class="container flex w-full min-w-0 flex-col gap-6 lg:flex-row-reverse mx-auto items-start max-w-7xl">
@@ -157,7 +157,7 @@ pub fn HomePage() -> impl IntoView {
                 <div class="flex w-full min-w-0 flex-col grow gap-8">
                     {move || needs_onboarding.get().then(|| view! {
                         <A
-                            href="/welcome"
+                            href="/market/welcome"
                             attr:class="group focus:outline-none rounded-2xl"
                             attr:aria-label=move || t_string!(i18n, home_onboarding_banner_cta).to_string()
                         >

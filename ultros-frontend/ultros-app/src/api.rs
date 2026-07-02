@@ -1067,6 +1067,10 @@ pub(crate) async fn delete_profile(id: i32) -> AppResult<()> {
     delete_api(&format!("/api/v1/profiles/{id}")).await
 }
 
+pub(crate) async fn get_profile_setup_status(id: i32) -> AppResult<ProfileSetupStatus> {
+    fetch_api(&format!("/api/v1/profiles/{id}/setup")).await
+}
+
 pub(crate) async fn get_job_levels(id: i32) -> AppResult<Vec<ProfileJobLevel>> {
     fetch_api(&format!("/api/v1/profiles/{id}/levels")).await
 }
@@ -1138,14 +1142,26 @@ pub(crate) async fn get_arbitrage_opportunities_api(
     fetch_api(&format!("/api/v1/profiles/{id}/arbitrage")).await
 }
 
-pub(crate) async fn get_crafting_opportunities_api(id: i32) -> AppResult<Vec<CraftingOpportunity>> {
-    fetch_api(&format!("/api/v1/profiles/{id}/crafting")).await
+pub(crate) async fn get_crafting_opportunities_api(
+    id: i32,
+    show_all_levels: bool,
+) -> AppResult<Vec<CraftingOpportunity>> {
+    fetch_api(&format!(
+        "/api/v1/profiles/{id}/crafting?show_all_levels={}",
+        show_all_levels
+    ))
+    .await
 }
 
 pub(crate) async fn get_gathering_routes_api(
     id: i32,
+    show_all_levels: bool,
 ) -> AppResult<(Vec<GatheringNodeDetail>, Vec<TimedNodeDetail>)> {
-    fetch_api(&format!("/api/v1/profiles/{id}/gathering")).await
+    fetch_api(&format!(
+        "/api/v1/profiles/{id}/gathering?show_all_levels={}",
+        show_all_levels
+    ))
+    .await
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -1162,6 +1178,12 @@ pub(crate) struct PlayerProfile {
     pub alert_item_cooldown_minutes: i32,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub(crate) struct ProfileSetupStatus {
+    pub complete: bool,
+    pub missing: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]

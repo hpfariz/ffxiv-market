@@ -62,7 +62,8 @@ pub(crate) fn format_threshold_alert_message(
     price_threshold: i32,
 ) -> (String, String) {
     let title = format!("🎯 {item_name} dropped to {matched_price} gil");
-    let body = format!("Threshold: {price_threshold} gil\nhttps://ultros.app/item/{item_id}");
+    let body =
+        format!("Threshold: {price_threshold} gil\nhttps://ultros.app/market/item/{item_id}");
     (title, body)
 }
 
@@ -80,7 +81,7 @@ pub(crate) fn format_list_threshold_alert_message(
 ) -> (String, String) {
     let title = format!("📋 {list_name}: {item_name} at {matched_price} gil");
     let body = format!(
-        "Target: {target_price} gil\nItem: https://ultros.app/item/{item_id}\nList: https://ultros.app/list/{list_id}"
+        "Target: {target_price} gil\nItem: https://ultros.app/market/item/{item_id}\nList: https://ultros.app/market/list/{list_id}"
     );
     (title, body)
 }
@@ -680,13 +681,13 @@ mod test {
     fn format_message_body_includes_threshold_and_universalis_link() {
         let (_, body) = format_threshold_alert_message("Cordial", 6141, 500, 1000);
         assert!(body.contains("1000"));
-        assert!(body.contains("ultros.app/item/6141"));
+        assert!(body.contains("ultros.app/market/item/6141"));
     }
 
     #[test]
     fn format_message_handles_unicode_item_names() {
         let (title, body) = format_threshold_alert_message("水晶", 100, 50, 60);
         assert!(title.contains("水晶"));
-        assert!(body.contains("ultros.app/item/100"));
+        assert!(body.contains("ultros.app/market/item/100"));
     }
 }

@@ -58,7 +58,7 @@ impl SearchService {
                 index_writer.add_document(doc!(
                     title_field => item.name.as_str(),
                     type_field => "item",
-                    url_field => format!("/item/{}", id.0),
+                    url_field => format!("/market/item/{}", id.0),
                     icon_id_field => id.0 as i64, // Use Item ID for image lookup
                     category_field => category_name,
                 ))?;
@@ -70,7 +70,7 @@ impl SearchService {
             index_writer.add_document(doc!(
                 title_field => cat.name.as_str(),
                 type_field => "category",
-                url_field => format!("/items/category/{}", cat.name),
+                url_field => format!("/market/items/category/{}", cat.name),
                 // Categories don't have a direct icon, maybe use a default or 0
                 icon_id_field => 0i64,
                 category_field => "",
@@ -88,7 +88,7 @@ impl SearchService {
                 index_writer.add_document(doc!(
                     title_field => name,
                     type_field => "job equipment", // Renamed from "job"
-                    url_field => format!("/items/jobset/{}", job.name),
+                    url_field => format!("/market/items/jobset/{}", job.name),
                     icon_id_field => 0i64, // Jobs don't have a simple icon ID in this context easily accessible or needed?
                     category_field => "",
                 ))?;
@@ -147,7 +147,7 @@ impl SearchService {
                 index_writer.add_document(doc!(
                     title_field => item.name.as_str(),
                     type_field => "currency",
-                    url_field => format!("/currency-exchange/{}", id.0),
+                    url_field => format!("/market/currency-exchange/{}", id.0),
                     icon_id_field => id.0 as i64, // Use Item ID for image lookup
                     category_field => "",
                 ))?;

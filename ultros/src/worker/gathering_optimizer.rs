@@ -200,11 +200,12 @@ impl GatheringOptimizer {
             }
 
             // Apply Level filters
-            if !show_all_levels {
-                let player_level = gatherer_levels.get(&class_kind).cloned().unwrap_or(0);
-                if player_level < g_item.gathering_item_level {
-                    continue;
-                }
+            if !show_all_levels
+                && gatherer_levels
+                    .get(&class_kind)
+                    .is_some_and(|player_level| *player_level < g_item.gathering_item_level)
+            {
+                continue;
             }
 
             let unit_price = lowest_prices.get(&item_id).cloned().unwrap_or(0);
@@ -251,11 +252,12 @@ impl GatheringOptimizer {
             }
 
             // Apply Level filters
-            if !show_all_levels {
-                let player_level = gatherer_levels.get(meta.class_kind).cloned().unwrap_or(0);
-                if player_level < meta.level {
-                    continue;
-                }
+            if !show_all_levels
+                && gatherer_levels
+                    .get(meta.class_kind)
+                    .is_some_and(|player_level| *player_level < meta.level)
+            {
+                continue;
             }
 
             let unit_price = lowest_prices.get(&meta.item_id).cloned().unwrap_or(0);

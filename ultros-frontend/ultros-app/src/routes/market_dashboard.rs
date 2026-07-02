@@ -1,11 +1,18 @@
 use crate::api::*;
 use crate::components::icon::Icon;
+use crate::components::item_icon::{IconSize, ItemIcon};
+use crate::components::world_name::WorldName;
+use crate::components::world_picker::WorldPicker;
+use crate::global_state::LocalWorldData;
+use crate::global_state::xiv_data::tracked_data;
 use icondata as i;
 use leptos::either::Either;
 use leptos::prelude::*;
+use leptos::reactive::wrappers::write::IntoSignalSetter;
 use leptos::task::spawn_local;
 use serde_json::json;
 use thousands::Separable;
+use ultros_api_types::world_helper::AnySelector;
 #[cfg(feature = "hydrate")]
 use wasm_bindgen::JsCast;
 
@@ -26,6 +33,7 @@ pub fn MarketDashboard() -> impl IntoView {
     let (profiles, set_profiles) = signal(Vec::<PlayerProfile>::new());
     let (active_profile, set_active_profile) = signal(None::<PlayerProfile>);
     let (is_authenticated, set_is_authenticated) = signal(true);
+    let (setup_status, set_setup_status) = signal(None::<ProfileSetupStatus>);
 
     // Selected profile ID helper
     let active_profile_id = move || active_profile().map(|p| p.id);
@@ -35,9 +43,19 @@ pub fn MarketDashboard() -> impl IntoView {
         spawn_local(async move {
             match get_profiles().await {
                 Ok(list) => {
+                    let active_id = active_profile().map(|p| p.id);
                     set_profiles(list.clone());
                     set_is_authenticated(true);
-                    if !list.is_empty() && active_profile().is_none() {
+                    if list.is_empty() {
+                        set_active_profile(None);
+                    } else if let Some(id) = active_id {
+                        let next_profile = list
+                            .iter()
+                            .find(|p| p.id == id)
+                            .cloned()
+                            .unwrap_or_else(|| list[0].clone());
+                        set_active_profile(Some(next_profile));
+                    } else {
                         set_active_profile(Some(list[0].clone()));
                     }
                 }
@@ -57,6 +75,22 @@ pub fn MarketDashboard() -> impl IntoView {
     // Initial load
     Effect::new(move |_| {
         load_profiles();
+    });
+
+    Effect::new(move |_| {
+        if let Some(profile) = active_profile() {
+            spawn_local(async move {
+                match get_profile_setup_status(profile.id).await {
+                    Ok(status) => set_setup_status(Some(status)),
+                    Err(e) => {
+                        log::error!("Error loading profile setup status: {e:?}");
+                        set_setup_status(None);
+                    }
+                }
+            });
+        } else {
+            set_setup_status(None);
+        }
     });
 
     // Eorzea Clock Signal
@@ -224,7 +258,7 @@ pub fn MarketDashboard() -> impl IntoView {
             // Active Tab Content
             <div>
                 {move || if !is_authenticated() {
-                    Either::Left(view! {
+                    view! {
                         <div class="max-w-md mx-auto my-12 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 shadow-2xl text-center space-y-6">
                             <div class="mx-auto w-16 h-16 rounded-full bg-violet-500/10 flex items-center justify-center text-violet-400">
                                 <Icon icon=i::BiUserRegular attr:class="text-3xl" />
@@ -244,16 +278,311 @@ pub fn MarketDashboard() -> impl IntoView {
                                 "Login with Discord"
                             </a>
                         </div>
-                    })
+                    }.into_any()
                 } else {
-                    Either::Right(match active_tab() {
-                        MarketTab::Dashboard => Either::Left(view! { <DashboardView profile=active_profile() reload_profiles=load_profiles /> }),
-                        MarketTab::Arbitrage => Either::Right(Either::Left(view! { <ArbitrageView profile_id=active_profile_id() /> })),
-                        MarketTab::Crafting => Either::Right(Either::Right(Either::Left(view! { <CraftingView profile_id=active_profile_id() /> }))),
-                        MarketTab::Gathering => Either::Right(Either::Right(Either::Right(Either::Left(view! { <GatheringView profile_id=active_profile_id() /> })))),
-                        MarketTab::Settings => Either::Right(Either::Right(Either::Right(Either::Right(view! { <SettingsView profile=active_profile() profiles=profiles() reload_profiles=load_profiles /> })))),
-                    })
+                    match (active_profile(), setup_status()) {
+                        (None, _) => view! { <CreateFirstProfileView reload_profiles=load_profiles /> }.into_any(),
+                        (Some(_), None) => view! {
+                            <div class="text-sm text-gray-400 bg-white/5 border border-white/10 rounded-xl p-4">
+                                "Checking profile setup..."
+                            </div>
+                        }.into_any(),
+                        (Some(profile), Some(status)) if !status.complete => view! {
+                            <FirstTimeSetupView profile=profile status=status reload_profiles=load_profiles />
+                        }.into_any(),
+                        _ => match active_tab() {
+                            MarketTab::Dashboard => view! { <DashboardView profile=active_profile() reload_profiles=load_profiles /> }.into_any(),
+                            MarketTab::Arbitrage => view! { <ArbitrageView profile_id=active_profile_id() /> }.into_any(),
+                            MarketTab::Crafting => view! { <CraftingView profile_id=active_profile_id() /> }.into_any(),
+                            MarketTab::Gathering => view! { <GatheringView profile_id=active_profile_id() /> }.into_any(),
+                            MarketTab::Settings => view! { <SettingsView profile=active_profile() profiles=profiles() reload_profiles=load_profiles /> }.into_any(),
+                        },
+                    }
                 }}
+            </div>
+        </div>
+    }
+}
+
+#[component]
+fn CreateFirstProfileView(
+    reload_profiles: impl Fn() + Copy + Send + Sync + 'static,
+) -> impl IntoView {
+    let (profile_name, set_profile_name) = signal("Main".to_string());
+    let (error, set_error) = signal(None::<String>);
+
+    let create = move |_| {
+        let name = profile_name().trim().to_string();
+        if name.is_empty() {
+            set_error(Some("Enter a profile name first.".to_string()));
+            return;
+        }
+        spawn_local(async move {
+            match create_profile(name).await {
+                Ok(_) => {
+                    set_error(None);
+                    reload_profiles();
+                }
+                Err(e) => set_error(Some(e.to_string())),
+            }
+        });
+    };
+
+    view! {
+        <div class="max-w-xl mx-auto my-12 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 shadow-2xl space-y-6">
+            <div class="space-y-2">
+                <h2 class="text-2xl font-bold text-gray-100">"Create your market profile"</h2>
+                <p class="text-sm text-gray-400">
+                    "Profiles keep worlds, gil balance, alert channels, and market thresholds separate for each character or alt."
+                </p>
+            </div>
+            <div class="space-y-2">
+                <label class="block text-gray-400 font-semibold text-sm">"Profile name"</label>
+                <input
+                    type="text"
+                    class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                    prop:value=profile_name
+                    on:input=move |ev| set_profile_name(event_target_value(&ev))
+                />
+            </div>
+            {move || error().map(|message| view! {
+                <div class="text-sm text-rose-300 bg-rose-500/10 border border-rose-400/20 rounded-xl p-3">{message}</div>
+            })}
+            <button
+                class="inline-flex items-center justify-center gap-2 w-full py-3 px-4 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl shadow-lg transition-colors"
+                on:click=create
+            >
+                <Icon icon=i::BiPlusRegular />
+                "Create Profile"
+            </button>
+        </div>
+    }
+}
+
+#[component]
+fn FirstTimeSetupView(
+    profile: PlayerProfile,
+    status: ProfileSetupStatus,
+    reload_profiles: impl Fn() + Copy + Send + Sync + 'static,
+) -> impl IntoView {
+    let world_data = use_context::<LocalWorldData>().map(|data| data.0);
+    let profile_id = profile.id;
+    let profile_display_name = profile.display_name.clone();
+    let (home_world, set_home_world) = signal(profile.home_world_id.map(AnySelector::World));
+    let (active_market, set_active_market) =
+        signal(profile.active_datacenter_id.map(AnySelector::Datacenter));
+    let (gil_balance, set_gil_balance) = signal(profile.gil_balance.max(0));
+    let (min_profit, set_min_profit) = signal(25_000i64);
+    let (velocity_threshold, set_velocity_threshold) = signal(1.0f64);
+    let (travel_rate, set_travel_rate) = signal(10_000i64);
+    let (min_profit_total, set_min_profit_total) = signal(50_000i64);
+    let (error, set_error) = signal(None::<String>);
+    let (saving, set_saving) = signal(false);
+
+    {
+        Effect::new(move |_| {
+            spawn_local(async move {
+                if let Ok(settings) = get_arbitrage_settings(profile_id).await {
+                    set_min_profit(settings.min_net_profit.max(25_000));
+                    set_velocity_threshold(settings.velocity_threshold.max(1.0));
+                    set_travel_rate(settings.travel_cost_rate_per_min.max(10_000));
+                    set_min_profit_total(settings.min_profit_total.max(50_000));
+                }
+            });
+        });
+    }
+
+    let missing_label = move |key: &str| {
+        match key {
+            "home_world" => "Home world",
+            "active_datacenter" => "Active market data center",
+            "gil_balance" => "Gil balance",
+            "arbitrage_min_net_profit" => "Minimum net profit",
+            "arbitrage_velocity_threshold" => "Velocity threshold",
+            "arbitrage_min_profit_total" => "Minimum profit floor",
+            other => other,
+        }
+        .to_string()
+    };
+
+    let save_setup = {
+        let world_data = world_data.clone();
+        move |_| {
+            let Some(AnySelector::World(home_world_id)) = home_world() else {
+                set_error(Some("Choose a home world.".to_string()));
+                return;
+            };
+
+            let active_datacenter_id = match active_market() {
+                Some(AnySelector::Datacenter(id)) => Some(id),
+                Some(AnySelector::World(world_id)) => world_data
+                    .as_ref()
+                    .and_then(|result| result.as_ref().ok())
+                    .and_then(|worlds| worlds.lookup_selector(AnySelector::World(world_id)))
+                    .and_then(|result| result.as_world().map(|world| world.datacenter_id)),
+                _ => None,
+            };
+
+            let Some(active_datacenter_id) = active_datacenter_id else {
+                set_error(Some(
+                    "Choose an active data center or one of its worlds.".to_string(),
+                ));
+                return;
+            };
+
+            if gil_balance() <= 0 {
+                set_error(Some("Enter your current gil balance.".to_string()));
+                return;
+            }
+            if min_profit() <= 0 || velocity_threshold() <= 0.0 || min_profit_total() <= 0 {
+                set_error(Some(
+                    "Market thresholds must be greater than zero.".to_string(),
+                ));
+                return;
+            }
+
+            set_saving(true);
+            set_error(None);
+            let gil = gil_balance();
+            let min_p = min_profit();
+            let velocity = velocity_threshold();
+            let travel = travel_rate();
+            let min_total = min_profit_total();
+
+            spawn_local(async move {
+                let profile_result = update_profile(
+                    profile_id,
+                    json!({
+                        "home_world_id": home_world_id,
+                        "active_datacenter_id": active_datacenter_id,
+                        "gil_balance": gil,
+                    }),
+                )
+                .await;
+
+                let settings_result = update_arbitrage_settings(
+                    profile_id,
+                    json!({
+                        "min_net_profit": min_p,
+                        "velocity_threshold": velocity,
+                        "travel_cost_rate_per_min": travel,
+                        "min_profit_total": min_total,
+                        "category_blocklist": null,
+                        "category_allowlist": null,
+                        "world_exclusion_list": null,
+                        "excluded_item_ids": null,
+                        "max_listing_age_hours": 4,
+                        "show_stale_panel": false,
+                    }),
+                )
+                .await;
+
+                set_saving(false);
+                match (profile_result, settings_result) {
+                    (Ok(_), Ok(_)) => reload_profiles(),
+                    (Err(e), _) | (_, Err(e)) => set_error(Some(e.to_string())),
+                }
+            });
+        }
+    };
+
+    view! {
+        <div class="max-w-4xl mx-auto bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 shadow-xl space-y-6">
+            <div class="flex flex-col gap-2">
+                <div class="inline-flex items-center gap-2 text-amber-300 text-sm font-semibold">
+                    <Icon icon=i::BiCogRegular />
+                    "First-time setup"
+                </div>
+                <h2 class="text-2xl font-bold text-gray-100">"Finish setting up " {profile_display_name.clone()}</h2>
+                <p class="text-sm text-gray-400 max-w-2xl">
+                    "Recommendations stay locked until these basics are set, so the app does not rank flips or crafts using placeholder values."
+                </p>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+                {status.missing.into_iter().map(|key| view! {
+                    <span class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-400/10 text-amber-200 border border-amber-400/20">
+                        {missing_label(&key)}
+                    </span>
+                }).collect::<Vec<_>>()}
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-5 text-sm">
+                <div class="space-y-2">
+                    <label class="block text-gray-300 font-semibold">"Home world"</label>
+                    <WorldPicker
+                        current_world=home_world.into()
+                        set_current_world=set_home_world.into_signal_setter()
+                    />
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-gray-300 font-semibold">"Active market data center"</label>
+                    <WorldPicker
+                        current_world=active_market.into()
+                        set_current_world=set_active_market.into_signal_setter()
+                    />
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-gray-300 font-semibold">"Gil balance"</label>
+                    <input
+                        type="number"
+                        class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                        prop:value=gil_balance
+                        on:input=move |ev| set_gil_balance(event_target_value(&ev).parse::<i64>().unwrap_or(0))
+                    />
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-gray-300 font-semibold">"Minimum net profit"</label>
+                    <input
+                        type="number"
+                        class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                        prop:value=min_profit
+                        on:input=move |ev| set_min_profit(event_target_value(&ev).parse::<i64>().unwrap_or(0))
+                    />
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-gray-300 font-semibold">"Velocity threshold"</label>
+                    <input
+                        type="number"
+                        step="0.1"
+                        class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                        prop:value=velocity_threshold
+                        on:input=move |ev| set_velocity_threshold(event_target_value(&ev).parse::<f64>().unwrap_or(0.0))
+                    />
+                </div>
+                <div class="space-y-2">
+                    <label class="block text-gray-300 font-semibold">"Travel cost rate"</label>
+                    <input
+                        type="number"
+                        class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                        prop:value=travel_rate
+                        on:input=move |ev| set_travel_rate(event_target_value(&ev).parse::<i64>().unwrap_or(0))
+                    />
+                </div>
+                <div class="space-y-2 md:col-span-2">
+                    <label class="block text-gray-300 font-semibold">"Minimum profit floor"</label>
+                    <input
+                        type="number"
+                        class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                        prop:value=min_profit_total
+                        on:input=move |ev| set_min_profit_total(event_target_value(&ev).parse::<i64>().unwrap_or(0))
+                    />
+                </div>
+            </div>
+
+            {move || error().map(|message| view! {
+                <div class="text-sm text-rose-300 bg-rose-500/10 border border-rose-400/20 rounded-xl p-3">{message}</div>
+            })}
+
+            <div class="flex justify-end">
+                <button
+                    class="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:bg-zinc-700 disabled:text-zinc-400 text-white font-semibold rounded-xl transition-colors"
+                    disabled=saving
+                    on:click=save_setup
+                >
+                    <Icon icon=i::BiCheckRegular />
+                    {move || if saving() { "Saving..." } else { "Complete Setup" }}
+                </button>
             </div>
         </div>
     }
@@ -286,7 +615,7 @@ fn DashboardView(
                         set_top_arb(None);
                     }
                 }
-                if let Ok(list) = get_crafting_opportunities_api(pid).await {
+                if let Ok(list) = get_crafting_opportunities_api(pid, false).await {
                     if !list.is_empty() {
                         set_top_craft(Some(list[0].clone()));
                     } else {
@@ -374,12 +703,24 @@ fn DashboardView(
                 {move || match top_arb() {
                     Some(opp) => Either::Left(view! {
                         <div class="mt-4 space-y-3">
-                            <div class="text-xl font-bold text-gray-100">
-                                {format!("Item #{} ({})", opp.item_id, if opp.hq { "HQ" } else { "NQ" })}
+                            <div class="flex items-center gap-3">
+                                <ItemIcon item_id=opp.item_id icon_size=IconSize::Small />
+                                <div>
+                                    <div class="text-xl font-bold text-gray-100">
+                                        {tracked_data()
+                                            .items
+                                            .get(&xiv_gen::ItemId(opp.item_id))
+                                            .map(|item| item.name.as_str().to_string())
+                                            .unwrap_or_else(|| format!("Item #{}", opp.item_id))}
+                                    </div>
+                                    <div class="text-xs text-gray-500">
+                                        {format!("#{} {}", opp.item_id, if opp.hq { "HQ" } else { "NQ" })}
+                                    </div>
+                                </div>
                             </div>
                             <div class="grid grid-cols-2 gap-2 text-sm text-gray-400">
-                                <div>"Source World:" <span class="text-gray-200 font-medium">{opp.source_world_id}</span></div>
-                                <div>"Dest World:" <span class="text-gray-200 font-medium">{opp.dest_world_id}</span></div>
+                                <div>"Buy From:" <span class="text-gray-200 font-medium"><WorldName id=AnySelector::World(opp.source_world_id) /></span></div>
+                                <div>"Sell On:" <span class="text-gray-200 font-medium"><WorldName id=AnySelector::World(opp.dest_world_id) /></span></div>
                                 <div>"Est Net Profit:" <span class="text-emerald-400 font-semibold">{format!("{} Gil", opp.net_profit.separate_with_commas())}</span></div>
                                 <div>"Velocity:" <span class="text-violet-400 font-semibold">{format!("{:.2}", opp.velocity_score)}</span></div>
                             </div>
@@ -435,33 +776,84 @@ fn DashboardView(
 #[component]
 fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
     let (opportunities, set_opportunities) = signal(Vec::<ArbitrageOpportunity>::new());
+    let (loading, set_loading) = signal(true);
+    let (load_error, set_load_error) = signal(None::<String>);
+    let (refresh_tick, set_refresh_tick) = signal(0u32);
+    let (last_refreshed, set_last_refreshed) = signal(None::<String>);
+
+    #[cfg(feature = "hydrate")]
+    {
+        let interval = send_wrapper::SendWrapper::new(gloo_timers::callback::Interval::new(
+            60_000,
+            move || {
+                set_refresh_tick.update(|tick| *tick = tick.wrapping_add(1));
+            },
+        ));
+        on_cleanup(move || {
+            drop(interval);
+        });
+    }
 
     // Load flips
     Effect::new(move |_| {
+        let _ = refresh_tick();
         if let Some(pid) = profile_id {
+            set_loading(true);
+            set_load_error(None);
             spawn_local(async move {
-                if let Ok(list) = get_arbitrage_opportunities_api(pid).await {
-                    set_opportunities(list);
+                match get_arbitrage_opportunities_api(pid).await {
+                    Ok(list) => {
+                        set_opportunities(list);
+                        set_load_error(None);
+                        set_last_refreshed(Some("Updated just now".to_string()));
+                    }
+                    Err(err) => {
+                        set_opportunities(Vec::new());
+                        set_load_error(Some(format!("{err:?}")));
+                        set_last_refreshed(None);
+                    }
                 }
+                set_loading(false);
             });
+        } else {
+            set_opportunities(Vec::new());
+            set_load_error(Some("No active profile selected.".to_string()));
+            set_loading(false);
         }
     });
 
     view! {
         <div class="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 shadow-xl space-y-6">
-            <div class="flex justify-between items-center">
-                <h3 class="text-xl font-bold text-gray-100">"Arbitrage Opportunities"</h3>
-                <span class="text-xs text-gray-400">{move || format!("{} matches", opportunities().len())}</span>
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h3 class="text-xl font-bold text-gray-100">"Arbitrage Opportunities"</h3>
+                    <div class="mt-1 flex flex-wrap items-center gap-3 text-xs text-gray-400">
+                        <span>{move || format!("{} matches", opportunities().len())}</span>
+                        <span>{move || last_refreshed().unwrap_or_else(|| "Waiting for first refresh".to_string())}</span>
+                        <span>"Auto-refreshes every 60s"</span>
+                    </div>
+                </div>
+                <button
+                    class="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm font-semibold text-gray-200 transition-all hover:border-violet-500/40 hover:bg-violet-500/10 disabled:cursor-wait disabled:opacity-60"
+                    disabled=loading
+                    on:click=move |_| set_refresh_tick.update(|tick| *tick = tick.wrapping_add(1))
+                >
+                    <Icon icon=i::BiRefreshRegular attr:class="size-4 text-violet-300" />
+                    "Refresh"
+                </button>
             </div>
 
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-white/10 text-sm text-left">
                     <thead>
                         <tr class="text-gray-400 font-semibold">
-                            <th class="py-3 px-4">"Item ID"</th>
-                            <th class="py-3 px-4">"Source"</th>
-                            <th class="py-3 px-4">"Destination"</th>
+                            <th class="py-3 px-4">"Item"</th>
+                            <th class="py-3 px-4">"Buy From"</th>
+                            <th class="py-3 px-4">"Sell On"</th>
+                            <th class="py-3 px-4">"Buy Price"</th>
+                            <th class="py-3 px-4">"Competing Price"</th>
                             <th class="py-3 px-4">"Qty"</th>
+                            <th class="py-3 px-4">"Total Cost"</th>
                             <th class="py-3 px-4">"Gross Profit"</th>
                             <th class="py-3 px-4">"Net Profit"</th>
                             <th class="py-3 px-4">"Velocity"</th>
@@ -470,27 +862,91 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-white/5">
-                        {move || opportunities().into_iter().map(|opp| {
-                            view! {
-                                <tr class="hover:bg-white/5 transition-colors">
-                                    <td class="py-3 px-4 font-semibold text-gray-200">
-                                        {format!("Item #{} ({})", opp.item_id, if opp.hq { "HQ" } else { "NQ" })}
-                                    </td>
-                                    <td class="py-3 px-4">{opp.source_world_id}</td>
-                                    <td class="py-3 px-4">{opp.dest_world_id}</td>
-                                    <td class="py-3 px-4">{opp.quantity_available}</td>
-                                    <td class="py-3 px-4 text-gray-300">{opp.gross_profit.separate_with_commas()}</td>
-                                    <td class="py-3 px-4 text-emerald-400 font-semibold">{opp.net_profit.separate_with_commas()}</td>
-                                    <td class="py-3 px-4 font-mono">{format!("{:.2}", opp.velocity_score)}</td>
-                                    <td class="py-3 px-4 text-gray-400 font-mono">{format!("{}s", opp.listing_age_seconds)}</td>
-                                    <td class="py-3 px-4">
-                                        {opp.over_budget.then(|| view! {
-                                            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400/10 text-amber-300 border border-amber-400/20">"OVER BUDGET"</span>
-                                        })}
-                                    </td>
-                                </tr>
+                        {move || {
+                            let opportunities = opportunities();
+                            if let Some(error) = load_error() {
+                                vec![view! {
+                                    <tr>
+                                        <td colspan="12" class="py-8 px-4 text-center text-rose-300">
+                                            {format!("Could not load arbitrage opportunities: {error}")}
+                                        </td>
+                                    </tr>
+                                }.into_any()]
+                            } else if loading() {
+                                vec![view! {
+                                    <tr>
+                                        <td colspan="12" class="py-8 px-4 text-center text-gray-400">
+                                            "Loading arbitrage opportunities..."
+                                        </td>
+                                    </tr>
+                                }.into_any()]
+                            } else if opportunities.is_empty() {
+                                vec![view! {
+                                    <tr>
+                                        <td colspan="12" class="py-8 px-4 text-center text-gray-400">
+                                            "No active flips found yet. The scanner runs after market updates and after profile/settings changes; lowering the velocity or profit thresholds can also reveal more candidates."
+                                        </td>
+                                    </tr>
+                                }.into_any()]
+                            } else {
+                                opportunities.into_iter().map(|opp| {
+                                    let buy_price = if opp.quantity_available > 0 {
+                                        opp.total_cost / opp.quantity_available as i64
+                                    } else {
+                                        0
+                                    };
+                                    let competing_price = if opp.quantity_available > 0 {
+                                        buy_price + (opp.gross_profit / opp.quantity_available as i64)
+                                    } else {
+                                        0
+                                    };
+                                    let item_name = tracked_data()
+                                        .items
+                                        .get(&xiv_gen::ItemId(opp.item_id))
+                                        .map(|item| item.name.as_str().to_string())
+                                        .unwrap_or_else(|| format!("Item #{}", opp.item_id));
+                                    view! {
+                                        <tr class="hover:bg-white/5 transition-colors">
+                                            <td class="py-3 px-4 font-semibold text-gray-200">
+                                                <div class="flex items-center gap-3 min-w-[220px]">
+                                                    <ItemIcon item_id=opp.item_id icon_size=IconSize::Small />
+                                                    <div>
+                                                        <a
+                                                            class="text-gray-100 hover:text-violet-300 transition-colors"
+                                                            href=format!("/market/item/{}", opp.item_id)
+                                                        >
+                                                            {item_name}
+                                                        </a>
+                                                        <div class="text-xs text-gray-500">
+                                                            {format!("#{} {}", opp.item_id, if opp.hq { "HQ" } else { "NQ" })}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td class="py-3 px-4">
+                                                <WorldName id=AnySelector::World(opp.source_world_id) />
+                                            </td>
+                                            <td class="py-3 px-4">
+                                                <WorldName id=AnySelector::World(opp.dest_world_id) />
+                                            </td>
+                                            <td class="py-3 px-4 font-mono text-gray-300">{format!("{} Gil", buy_price.separate_with_commas())}</td>
+                                            <td class="py-3 px-4 font-mono text-gray-300">{format!("{} Gil", competing_price.separate_with_commas())}</td>
+                                            <td class="py-3 px-4">{opp.quantity_available}</td>
+                                            <td class="py-3 px-4 text-gray-300">{format!("{} Gil", opp.total_cost.separate_with_commas())}</td>
+                                            <td class="py-3 px-4 text-gray-300">{opp.gross_profit.separate_with_commas()}</td>
+                                            <td class="py-3 px-4 text-emerald-400 font-semibold">{opp.net_profit.separate_with_commas()}</td>
+                                            <td class="py-3 px-4 font-mono">{format!("{:.2}", opp.velocity_score)}</td>
+                                            <td class="py-3 px-4 text-gray-400 font-mono">{format!("{}s", opp.listing_age_seconds)}</td>
+                                            <td class="py-3 px-4">
+                                                {opp.over_budget.then(|| view! {
+                                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-400/10 text-amber-300 border border-amber-400/20">"OVER BUDGET"</span>
+                                                })}
+                                            </td>
+                                        </tr>
+                                    }.into_any()
+                                }).collect::<Vec<_>>()
                             }
-                        }).collect::<Vec<_>>()}
+                        }}
                     </tbody>
                 </table>
             </div>
@@ -502,11 +958,13 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
 fn CraftingView(profile_id: Option<i32>) -> impl IntoView {
     let (opportunities, set_opportunities) = signal(Vec::<CraftingOpportunity>::new());
     let (expanded_recipe, set_expanded_recipe) = signal(None::<i32>);
+    let (show_all_levels, set_show_all_levels) = signal(false);
 
     Effect::new(move |_| {
         if let Some(pid) = profile_id {
+            let show_all = show_all_levels();
             spawn_local(async move {
-                if let Ok(list) = get_crafting_opportunities_api(pid).await {
+                if let Ok(list) = get_crafting_opportunities_api(pid, show_all).await {
                     set_opportunities(list);
                 }
             });
@@ -515,7 +973,18 @@ fn CraftingView(profile_id: Option<i32>) -> impl IntoView {
 
     view! {
         <div class="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 shadow-xl space-y-6">
-            <h3 class="text-xl font-bold text-gray-100">"Recurse-to-BOM Crafting Optimizer"</h3>
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <h3 class="text-xl font-bold text-gray-100">"Recurse-to-BOM Crafting Optimizer"</h3>
+                <label class="inline-flex items-center gap-2 text-sm text-gray-300">
+                    <input
+                        type="checkbox"
+                        class="accent-violet-500"
+                        prop:checked=show_all_levels
+                        on:change=move |ev| set_show_all_levels(event_target_checked(&ev))
+                    />
+                    "Show all levels"
+                </label>
+            </div>
 
             <div class="space-y-4">
                 {move || opportunities().into_iter().map(|opp| {
@@ -589,11 +1058,13 @@ fn CraftingView(profile_id: Option<i32>) -> impl IntoView {
 fn GatheringView(profile_id: Option<i32>) -> impl IntoView {
     let (normal_items, set_normal_items) = signal(Vec::<GatheringNodeDetail>::new());
     let (timed_items, set_timed_items) = signal(Vec::<TimedNodeDetail>::new());
+    let (show_all_levels, set_show_all_levels) = signal(false);
 
     Effect::new(move |_| {
         if let Some(pid) = profile_id {
+            let show_all = show_all_levels();
             spawn_local(async move {
-                if let Ok((normal, timed)) = get_gathering_routes_api(pid).await {
+                if let Ok((normal, timed)) = get_gathering_routes_api(pid, show_all).await {
                     set_normal_items(normal);
                     set_timed_items(timed);
                 }
@@ -603,6 +1074,17 @@ fn GatheringView(profile_id: Option<i32>) -> impl IntoView {
 
     view! {
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="lg:col-span-2 flex justify-end">
+                <label class="inline-flex items-center gap-2 text-sm text-gray-300 bg-white/5 border border-white/10 rounded-xl px-3 py-2">
+                    <input
+                        type="checkbox"
+                        class="accent-violet-500"
+                        prop:checked=show_all_levels
+                        on:change=move |ev| set_show_all_levels(event_target_checked(&ev))
+                    />
+                    "Show all levels"
+                </label>
+            </div>
             // Always-Available Nodes
             <div class="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
                 <h3 class="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-fuchsia-400">"Always-Available Nodes"</h3>

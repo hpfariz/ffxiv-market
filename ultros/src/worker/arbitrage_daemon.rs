@@ -100,6 +100,11 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
             continue;
         }
 
+        // Clear the previous cache before this profile's scan so stale
+        // opportunities are not shown while recomputation is in progress.
+        db.save_arbitrage_opportunities(profile.id, Vec::new())
+            .await?;
+
         // Apply world exclusion list
         let excluded_worlds: Vec<i32> = if let Some(val) = &settings.world_exclusion_list {
             serde_json::from_value(val.clone()).unwrap_or_default()
@@ -150,6 +155,7 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
               AND s.rn = 1 AND d.rn = 1
               AND s.price_per_unit < d.price_per_unit
               AND s.timestamp > $3
+              AND d.timestamp > $3
         "#;
 
         let candidates = CandidateOpportunity::find_by_statement(Statement::from_sql_and_values(
@@ -197,10 +203,10 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
             }
 
             // Gate 1 — Velocity Filter
-            // Fetch total active listings for this item on the source world
+            // Measure sell-side demand on the destination world.
             let active_count = active_listing::Entity::find()
                 .filter(active_listing::Column::ItemId.eq(cand.item_id))
-                .filter(active_listing::Column::WorldId.eq(cand.source_world_id))
+                .filter(active_listing::Column::WorldId.eq(cand.dest_world_id))
                 .filter(active_listing::Column::Hq.eq(cand.hq))
                 .count(db.get_connection())
                 .await?;
@@ -214,7 +220,7 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
                 .select_only()
                 .column_as(sale_history::Column::Quantity.sum(), "total")
                 .filter(sale_history::Column::SoldItemId.eq(cand.item_id))
-                .filter(sale_history::Column::WorldId.eq(cand.source_world_id))
+                .filter(sale_history::Column::WorldId.eq(cand.dest_world_id))
                 .filter(sale_history::Column::Hq.eq(cand.hq))
                 .filter(sale_history::Column::SoldDate.gt(sales_cutoff))
                 .into_model::<UnitsSold>()

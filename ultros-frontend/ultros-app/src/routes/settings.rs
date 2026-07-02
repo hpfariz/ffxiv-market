@@ -211,7 +211,7 @@ fn HomeWorldPicker() -> impl IntoView {
                     <p class="text-sm text-gray-400">
                         {t!(i18n, default_price_zone_desc_1)}
                         <a
-                            href="/items"
+                            href="/market/items"
                             class="text-[color:var(--brand-fg)] hover:underline transition-colors"
                         >
                             {t!(i18n, items)}

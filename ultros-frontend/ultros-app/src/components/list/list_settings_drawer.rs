@@ -39,7 +39,7 @@ pub fn ListSettingsDrawer(
         if matches!(delete_action.value().get(), Some(Ok(_)))
             || matches!(leave_action.value().get(), Some(Ok(_)))
         {
-            navigate("/list", Default::default());
+            navigate("/market/list", Default::default());
         }
     });
 

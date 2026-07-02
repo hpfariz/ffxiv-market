@@ -313,6 +313,7 @@ async fn main() -> Result<()> {
         arbitrage_trigger.clone(),
     );
     arbitrage_daemon.start(token.clone());
+    arbitrage_trigger.notify_one();
 
     // Trigger arbitrage scan on listings update
     let listings_rx = senders.listings.subscribe();

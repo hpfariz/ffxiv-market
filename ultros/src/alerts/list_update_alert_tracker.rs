@@ -166,7 +166,7 @@ async fn handle_list_event(
     for rule in to_fire {
         let title = format!("List updated: {}", rule.list_name);
         let body = format!(
-            "{title_hint}{body_hint}\nhttps://ultros.app/list/{}",
+            "{title_hint}{body_hint}\nhttps://ultros.app/market/list/{}",
             rule.list_id
         );
         let delivery_result = dispatch_alert(rule.alert_id, &title, &body, db, ctx).await;

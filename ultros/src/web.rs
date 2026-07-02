@@ -1470,6 +1470,10 @@ pub(crate) async fn start_web(state: WebState) {
                 .delete(crate::web::api::profiles::delete_profile),
         )
         .route(
+            "/api/v1/profiles/{id}/setup",
+            get(crate::web::api::profiles::get_profile_setup_status),
+        )
+        .route(
             "/api/v1/profiles/{id}/levels",
             get(crate::web::api::profiles::get_job_levels)
                 .put(crate::web::api::profiles::save_job_levels),
