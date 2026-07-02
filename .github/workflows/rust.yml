@@ -1,5 +1,9 @@
 name: rust
 
+concurrency:
+    group: rust-${{ github.ref }}
+    cancel-in-progress: true
+
 on:
     push:
         branches: ["main"]
@@ -50,34 +54,8 @@ jobs:
                   key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
                   restore-keys: ${{ runner.os }}-cargo-
 
-            - name: Install cargo-binstall
-              uses: cargo-bins/cargo-binstall@main
-
-            - name: Install cargo tools
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                  install_if_missing() {
-                      if ! command -v $1 &> /dev/null; then
-                          echo "Installing $1..."
-                          cargo binstall --no-confirm $1
-                      else
-                          echo "$1 is already installed, skipping."
-                      fi
-                  }
-                  install_if_missing cargo-deny
-                  install_if_missing cargo-outdated
-                  install_if_missing cargo-udeps
-                  install_if_missing cargo-audit
-                  install_if_missing cargo-pants
-            # giving up on this fmt check for now
-            # - run: cargo fmt --version
-            - name: Check formatting
-              run: cargo fmt --all -- --check
-
-            - name: Run Clippy
-              # it would be good to support --all-features, but xiv-gen is a little unstable.
-              run: cargo clippy --all-targets -- -D warnings
+            - name: Run repository checks
+              run: ./check_ci.sh
 
             #- name: Run cargo-deny, outdated, udeps, audit, and pants
             #  run: |
