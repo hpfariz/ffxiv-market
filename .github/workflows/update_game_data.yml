@@ -53,6 +53,6 @@ jobs:
           git checkout -B update-game-data
           git add xiv-gen/ffxiv-datamining
           git commit -m "chore: update game data"
-          git push --force-with-lease origin update-game-data
+          git push --force origin update-game-data
           echo "Game data update branch pushed:"
           echo "https://github.com/${{ github.repository }}/pull/new/update-game-data"
