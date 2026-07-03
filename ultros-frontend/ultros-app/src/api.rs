@@ -1207,6 +1207,8 @@ pub(crate) struct ProfileArbitrageSettings {
     pub excluded_item_ids: Option<serde_json::Value>,
     pub max_listing_age_hours: i32,
     pub show_stale_panel: bool,
+    pub require_home_world_sell_target: bool,
+    pub source_world_scope: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -1247,6 +1249,7 @@ pub(crate) struct ArbitrageOpportunity {
     pub total_cost: i64,
     pub quantity_available: i32,
     pub over_budget: bool,
+    pub travel_tier: String,
     pub computed_at: chrono::NaiveDateTime,
 }
 

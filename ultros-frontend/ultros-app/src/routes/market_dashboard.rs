@@ -858,6 +858,7 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                             <th class="py-3 px-4">"Gross Profit"</th>
                             <th class="py-3 px-4">"Net Profit"</th>
                             <th class="py-3 px-4">"Velocity"</th>
+                            <th class="py-3 px-4">"Travel"</th>
                             <th class="py-3 px-4">"Age"</th>
                             <th class="py-3 px-4">"Flags"</th>
                         </tr>
@@ -868,7 +869,7 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                             if let Some(error) = load_error() {
                                 vec![view! {
                                     <tr>
-                                        <td colspan="12" class="py-8 px-4 text-center text-rose-300">
+                                        <td colspan="13" class="py-8 px-4 text-center text-rose-300">
                                             {format!("Could not load arbitrage opportunities: {error}")}
                                         </td>
                                     </tr>
@@ -876,7 +877,7 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                             } else if loading() {
                                 vec![view! {
                                     <tr>
-                                        <td colspan="12" class="py-8 px-4 text-center text-gray-400">
+                                        <td colspan="13" class="py-8 px-4 text-center text-gray-400">
                                             "Loading arbitrage opportunities..."
                                         </td>
                                     </tr>
@@ -884,7 +885,7 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                             } else if opportunities.is_empty() {
                                 vec![view! {
                                     <tr>
-                                        <td colspan="12" class="py-8 px-4 text-center text-gray-400">
+                                        <td colspan="13" class="py-8 px-4 text-center text-gray-400">
                                             "No active flips found yet. The scanner runs after market updates and after profile/settings changes; lowering the velocity or profit thresholds can also reveal more candidates."
                                         </td>
                                     </tr>
@@ -906,6 +907,18 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                                         .get(&xiv_gen::ItemId(opp.item_id))
                                         .map(|item| item.name.as_str().to_string())
                                         .unwrap_or_else(|| format!("Item #{}", opp.item_id));
+                                    let travel_label = match opp.travel_tier.as_str() {
+                                        "HOME" => "Home",
+                                        "SAME_DC_VISIT" => "Same DC",
+                                        "CROSS_DC_TRAVEL" => "Cross DC",
+                                        _ => "Unknown",
+                                    };
+                                    let travel_class = match opp.travel_tier.as_str() {
+                                        "HOME" => "bg-emerald-400/10 text-emerald-300 border-emerald-400/20",
+                                        "SAME_DC_VISIT" => "bg-sky-400/10 text-sky-300 border-sky-400/20",
+                                        "CROSS_DC_TRAVEL" => "bg-amber-400/10 text-amber-300 border-amber-400/20",
+                                        _ => "bg-zinc-700/40 text-zinc-300 border-zinc-600",
+                                    };
                                     view! {
                                         <tr class="hover:bg-white/5 transition-colors">
                                             <td class="py-3 px-4 font-semibold text-gray-200">
@@ -937,6 +950,11 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                                             <td class="py-3 px-4 text-gray-300">{opp.gross_profit.separate_with_commas()}</td>
                                             <td class="py-3 px-4 text-emerald-400 font-semibold">{opp.net_profit.separate_with_commas()}</td>
                                             <td class="py-3 px-4 font-mono">{format!("{:.2}", opp.velocity_score)}</td>
+                                            <td class="py-3 px-4">
+                                                <span class=format!("px-2 py-0.5 rounded text-[10px] font-bold border {}", travel_class)>
+                                                    {travel_label}
+                                                </span>
+                                            </td>
                                             <td class="py-3 px-4 text-gray-400 font-mono">{format!("{}s", opp.listing_age_seconds)}</td>
                                             <td class="py-3 px-4">
                                                 {opp.over_budget.then(|| view! {
@@ -1252,6 +1270,8 @@ fn SettingsView(
     let (vel_thresh, set_vel_thresh) = signal(0.0f64);
     let (travel_rate, set_travel_rate) = signal(0i64);
     let (min_profit_t, set_min_profit_t) = signal(0i64);
+    let (require_home_sell, set_require_home_sell) = signal(true);
+    let (source_scope, set_source_scope) = signal("SAME_DC".to_string());
 
     let profile_for_effect = profile.clone();
     Effect::new(move |_| {
@@ -1263,6 +1283,8 @@ fn SettingsView(
                     set_vel_thresh(settings.velocity_threshold);
                     set_travel_rate(settings.travel_cost_rate_per_min);
                     set_min_profit_t(settings.min_profit_total);
+                    set_require_home_sell(settings.require_home_world_sell_target);
+                    set_source_scope(settings.source_world_scope);
                 }
             });
         }
@@ -1288,6 +1310,8 @@ fn SettingsView(
             let vel = vel_thresh();
             let tr = travel_rate();
             let min_pt = min_profit_t();
+            let require_home = require_home_sell();
+            let scope = source_scope();
 
             spawn_local(async move {
                 let _ = update_arbitrage_settings(
@@ -1303,6 +1327,8 @@ fn SettingsView(
                         "excluded_item_ids": null,
                         "max_listing_age_hours": 4,
                         "show_stale_panel": false,
+                        "require_home_world_sell_target": require_home,
+                        "source_world_scope": scope,
                     }),
                 )
                 .await;
@@ -1410,6 +1436,30 @@ fn SettingsView(
                                 on:input=move |ev| set_min_profit_t(event_target_value(&ev).parse::<i64>().unwrap_or(0))
                             />
                         </div>
+                        <div>
+                            <label class="block text-gray-400 font-semibold mb-1">"Source Scope"</label>
+                            <select
+                                class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                prop:value=source_scope
+                                on:change=move |ev| set_source_scope(event_target_value(&ev))
+                            >
+                                <option value="SAME_DC">"Same data center"</option>
+                                <option value="SAME_REGION">"Same region"</option>
+                                <option value="CURRENT_WORLD">"Home world only"</option>
+                            </select>
+                        </div>
+                        <label class="flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
+                            <input
+                                type="checkbox"
+                                class="mt-1 accent-violet-500"
+                                prop:checked=require_home_sell
+                                on:change=move |ev| set_require_home_sell(event_target_checked(&ev))
+                            />
+                            <span>
+                                <span class="block font-semibold text-gray-300">"Sell only on home world"</span>
+                                <span class="block text-xs text-gray-500">"Keeps arbitrage executable with FFXIV travel restrictions."</span>
+                            </span>
+                        </label>
                     </div>
 
                     <div class="flex justify-end pt-4">

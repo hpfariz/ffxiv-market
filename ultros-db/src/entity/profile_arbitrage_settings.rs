@@ -16,6 +16,8 @@ pub struct Model {
     pub excluded_item_ids: Option<Json>,
     pub max_listing_age_hours: i32,
     pub show_stale_panel: bool,
+    pub require_home_world_sell_target: bool,
+    pub source_world_scope: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

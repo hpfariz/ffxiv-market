@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,7 +9,7 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, instrument};
 use ultros_db::UltrosDb;
-use ultros_db::entity::{arbitrage_opportunity, player_profile, world};
+use ultros_db::entity::{arbitrage_opportunity, datacenter, player_profile, world};
 
 pub struct ArbitrageDaemon {
     db: UltrosDb,
@@ -32,6 +33,7 @@ struct CandidateOpportunity {
 #[derive(Default)]
 struct ScanStats {
     candidates: usize,
+    setup_skipped: bool,
     world_excluded: usize,
     item_excluded: usize,
     static_missing: usize,
@@ -104,6 +106,7 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
             Some(id) => id,
             None => continue,
         };
+        let home_world_id = profile.home_world_id;
 
         let dc_worlds = world::Entity::find()
             .filter(world::Column::DatacenterId.eq(active_dc_id))
@@ -114,6 +117,50 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
         if dc_world_ids.is_empty() {
             continue;
         }
+
+        let (source_world_ids, _default_dest_world_ids, home_dc_world_ids) =
+            resolve_execution_worlds(
+                db,
+                &settings.source_world_scope,
+                home_world_id,
+                active_dc_id,
+            )
+            .await?;
+
+        if settings.require_home_world_sell_target && home_world_id.is_none() {
+            let stats = ScanStats {
+                setup_skipped: true,
+                ..ScanStats::default()
+            };
+            info!(
+                profile_id = profile.id,
+                profile = %profile.display_name,
+                setup_skipped = stats.setup_skipped,
+                "Skipped arbitrage scan because safe sell-target mode requires a home world"
+            );
+            continue;
+        }
+
+        let dest_world_ids = if settings.require_home_world_sell_target {
+            match home_world_id {
+                Some(id) => vec![id],
+                None => continue,
+            }
+        } else {
+            dc_world_ids.clone()
+        };
+
+        if source_world_ids.is_empty() || dest_world_ids.is_empty() {
+            continue;
+        }
+
+        let listing_world_ids: Vec<i32> = source_world_ids
+            .iter()
+            .chain(dest_world_ids.iter())
+            .copied()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
 
         let excluded_worlds: Vec<i32> = settings
             .world_exclusion_list
@@ -166,7 +213,7 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
                        SUM(quantity)::bigint AS units_sold,
                        percentile_cont(0.5) WITHIN GROUP (ORDER BY price_per_item)::integer AS median_sale_price
                 FROM sale_history
-                WHERE world_id = ANY($1)
+                WHERE world_id = ANY($6)
                   AND sold_item_id = ANY($4)
                   AND sold_date > $3
                   AND price_per_item > 0
@@ -187,7 +234,7 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
             JOIN sales_48h sales ON sales.item_id = d.item_id
                                 AND sales.hq = d.hq
                                 AND sales.world_id = d.world_id
-            WHERE s.world_id = ANY($1) AND d.world_id = ANY($1)
+            WHERE s.world_id = ANY($5) AND d.world_id = ANY($6)
               AND s.world_id != d.world_id
               AND s.rn = 1 AND d.rn = 1
               AND s.price_per_unit < LEAST(d.price_per_unit, sales.median_sale_price)
@@ -197,10 +244,12 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
             DbBackend::Postgres,
             sql,
             vec![
-                dc_world_ids.clone().into(),
+                listing_world_ids.into(),
                 staleness_cutoff.into(),
                 sales_cutoff.into(),
                 marketable_item_ids.clone().into(),
+                source_world_ids.clone().into(),
+                dest_world_ids.clone().into(),
             ],
         ))
         .all(db.get_connection())
@@ -272,9 +321,15 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
             }
 
             let travel_minutes = estimate_travel_time(
-                profile.home_world_id.unwrap_or(0),
+                home_world_id.unwrap_or(0),
                 cand.source_world_id,
                 cand.dest_world_id,
+                &home_dc_world_ids,
+            );
+            let travel_tier = travel_tier(
+                home_world_id.unwrap_or(0),
+                cand.source_world_id,
+                &home_dc_world_ids,
             );
             let travel_deduction = travel_minutes * settings.travel_cost_rate_per_min;
             let net_profit = gross_profit - travel_deduction;
@@ -304,6 +359,7 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
                 total_cost,
                 quantity_available: qty_to_buy,
                 over_budget,
+                travel_tier: travel_tier.to_string(),
                 computed_at: Utc::now().naive_utc(),
             });
         }
@@ -341,12 +397,105 @@ fn is_market_board_candidate(item: &xiv_gen::Item) -> bool {
     item.item_search_category > 1 && !item.name.trim().is_empty() && item.stack_size > 0
 }
 
-fn estimate_travel_time(home_world: i32, source_world: i32, dest_world: i32) -> i64 {
-    if source_world == dest_world {
-        if source_world == home_world { 0 } else { 2 }
-    } else if source_world == home_world || dest_world == home_world {
-        2
+async fn resolve_execution_worlds(
+    db: &UltrosDb,
+    source_world_scope: &str,
+    home_world_id: Option<i32>,
+    active_dc_id: i32,
+) -> Result<(Vec<i32>, Vec<i32>, HashSet<i32>), anyhow::Error> {
+    let active_dc_worlds = world::Entity::find()
+        .filter(world::Column::DatacenterId.eq(active_dc_id))
+        .all(db.get_connection())
+        .await?;
+    let active_dc_world_ids: Vec<i32> = active_dc_worlds.iter().map(|w| w.id).collect();
+
+    let Some(home_world_id) = home_world_id else {
+        let active_dc_world_set = active_dc_world_ids.iter().copied().collect();
+        return Ok((
+            active_dc_world_ids.clone(),
+            active_dc_world_ids,
+            active_dc_world_set,
+        ));
+    };
+
+    let Some(home_world) = world::Entity::find_by_id(home_world_id)
+        .one(db.get_connection())
+        .await?
+    else {
+        let active_dc_world_set = active_dc_world_ids.iter().copied().collect();
+        return Ok((
+            active_dc_world_ids.clone(),
+            active_dc_world_ids,
+            active_dc_world_set,
+        ));
+    };
+
+    let home_dc_worlds = world::Entity::find()
+        .filter(world::Column::DatacenterId.eq(home_world.datacenter_id))
+        .all(db.get_connection())
+        .await?;
+    let home_dc_world_ids: Vec<i32> = home_dc_worlds.iter().map(|w| w.id).collect();
+    let home_dc_world_set = home_dc_world_ids.iter().copied().collect::<HashSet<_>>();
+
+    let source_world_ids = match source_world_scope {
+        "CURRENT_WORLD" => vec![home_world_id],
+        "SAME_REGION" => {
+            let Some(home_dc) = datacenter::Entity::find_by_id(home_world.datacenter_id)
+                .one(db.get_connection())
+                .await?
+            else {
+                return Ok((
+                    home_dc_world_ids.clone(),
+                    home_dc_world_ids,
+                    home_dc_world_set,
+                ));
+            };
+            let region_dcs = datacenter::Entity::find()
+                .filter(datacenter::Column::RegionId.eq(home_dc.region_id))
+                .all(db.get_connection())
+                .await?;
+            let region_dc_ids: Vec<i32> = region_dcs.into_iter().map(|dc| dc.id).collect();
+            world::Entity::find()
+                .filter(world::Column::DatacenterId.is_in(region_dc_ids))
+                .all(db.get_connection())
+                .await?
+                .into_iter()
+                .map(|w| w.id)
+                .collect()
+        }
+        _ => home_dc_world_ids.clone(),
+    };
+
+    Ok((source_world_ids, home_dc_world_ids, home_dc_world_set))
+}
+
+fn travel_tier(
+    home_world: i32,
+    source_world: i32,
+    home_dc_world_ids: &HashSet<i32>,
+) -> &'static str {
+    if source_world == home_world {
+        "HOME"
+    } else if home_dc_world_ids.contains(&source_world) {
+        "SAME_DC_VISIT"
     } else {
-        4
+        "CROSS_DC_TRAVEL"
+    }
+}
+
+fn estimate_travel_time(
+    home_world: i32,
+    source_world: i32,
+    dest_world: i32,
+    home_dc_world_ids: &HashSet<i32>,
+) -> i64 {
+    if source_world == dest_world {
+        0
+    } else {
+        match travel_tier(home_world, source_world, home_dc_world_ids) {
+            "HOME" => 0,
+            "SAME_DC_VISIT" => 2,
+            _ => 8,
+        }
     }
 }

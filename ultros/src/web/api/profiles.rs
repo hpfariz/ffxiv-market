@@ -46,6 +46,10 @@ pub struct ArbitrageSettingsPayload {
     pub excluded_item_ids: Option<serde_json::Value>,
     pub max_listing_age_hours: i32,
     pub show_stale_panel: bool,
+    #[serde(default = "default_require_home_world_sell_target")]
+    pub require_home_world_sell_target: bool,
+    #[serde(default = "default_source_world_scope")]
+    pub source_world_scope: String,
 }
 
 #[derive(Deserialize)]
@@ -84,6 +88,22 @@ pub struct ProfileSetupStatus {
 pub struct OpportunityQuery {
     #[serde(default)]
     pub show_all_levels: bool,
+}
+
+fn default_require_home_world_sell_target() -> bool {
+    true
+}
+
+fn default_source_world_scope() -> String {
+    "SAME_DC".to_string()
+}
+
+fn normalize_source_world_scope(scope: &str) -> anyhow::Result<String> {
+    let normalized = scope.trim().to_ascii_uppercase();
+    match normalized.as_str() {
+        "CURRENT_WORLD" | "SAME_DC" | "SAME_REGION" => Ok(normalized),
+        _ => Err(anyhow::anyhow!("invalid source_world_scope")),
+    }
 }
 
 // Helpers
@@ -281,6 +301,7 @@ pub async fn update_arbitrage_settings(
     Json(payload): Json<ArbitrageSettingsPayload>,
 ) -> Result<Json<profile_arbitrage_settings::Model>, ApiError> {
     let _ = check_profile_owner(&db, id, user.id as i64).await?;
+    let source_world_scope = normalize_source_world_scope(&payload.source_world_scope)?;
 
     let active_model = profile_arbitrage_settings::ActiveModel {
         profile_id: sea_orm::ActiveValue::Set(id),
@@ -294,6 +315,10 @@ pub async fn update_arbitrage_settings(
         excluded_item_ids: sea_orm::ActiveValue::Set(payload.excluded_item_ids),
         max_listing_age_hours: sea_orm::ActiveValue::Set(payload.max_listing_age_hours),
         show_stale_panel: sea_orm::ActiveValue::Set(payload.show_stale_panel),
+        require_home_world_sell_target: sea_orm::ActiveValue::Set(
+            payload.require_home_world_sell_target,
+        ),
+        source_world_scope: sea_orm::ActiveValue::Set(source_world_scope),
     };
 
     let updated = db.update_arbitrage_settings(id, active_model).await?;

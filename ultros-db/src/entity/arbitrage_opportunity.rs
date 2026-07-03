@@ -18,6 +18,7 @@ pub struct Model {
     pub total_cost: i64,
     pub quantity_available: i32,
     pub over_budget: bool,
+    pub travel_tier: String,
     pub computed_at: DateTime,
 }
 

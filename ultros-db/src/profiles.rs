@@ -69,6 +69,8 @@ impl UltrosDb {
             excluded_item_ids: Set(None),
             max_listing_age_hours: Set(4),
             show_stale_panel: Set(false),
+            require_home_world_sell_target: Set(true),
+            source_world_scope: Set("SAME_DC".to_string()),
         }
         .insert(&txn)
         .await?;
@@ -179,6 +181,8 @@ impl UltrosDb {
                 excluded_item_ids: Set(None),
                 max_listing_age_hours: Set(4),
                 show_stale_panel: Set(false),
+                require_home_world_sell_target: Set(true),
+                source_world_scope: Set("SAME_DC".to_string()),
             }
             .insert(&self.db)
             .await?;
@@ -394,6 +398,7 @@ impl UltrosDb {
                     total_cost: Set(opp.total_cost),
                     quantity_available: Set(opp.quantity_available),
                     over_budget: Set(opp.over_budget),
+                    travel_tier: Set(opp.travel_tier),
                     computed_at: Set(opp.computed_at),
                 })
                 .collect();
