@@ -32,6 +32,7 @@ mod m20260514_000002_alert_list_update;
 mod m20260514_000003_list_activity;
 mod m20260627_000001_market_engine;
 mod m20260703_000001_arbitrage_execution_scope;
+mod m20260703_000002_arbitrage_volatility;
 
 pub struct Migrator;
 
@@ -73,6 +74,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260514_000003_list_activity::Migration),
             Box::new(m20260627_000001_market_engine::Migration),
             Box::new(m20260703_000001_arbitrage_execution_scope::Migration),
+            Box::new(m20260703_000002_arbitrage_volatility::Migration),
         ]
     }
 }

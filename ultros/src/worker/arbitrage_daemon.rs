@@ -130,6 +130,16 @@ struct CandidateOpportunity {
     source_timestamp: NaiveDateTime,
     dest_active_count: i64,
     units_sold_48h: i64,
+    regime_recent_window_count: i32,
+    recent_cluster_avg_price: Option<f64>,
+    prior_cluster_avg_price: Option<f64>,
+    price_jump_ratio: Option<f64>,
+    within_cluster_cv_recent: Option<f64>,
+    within_cluster_cv_prior: Option<f64>,
+    recent_cluster_sales_count: i32,
+    prior_cluster_sales_count: i32,
+    current_ask_cluster_avg: Option<f64>,
+    ask_vs_recent_sale_gap_pct: Option<f64>,
 }
 
 #[derive(Default)]
@@ -144,6 +154,7 @@ struct ScanStats {
     velocity_rejected: usize,
     gross_profit_rejected: usize,
     net_profit_rejected: usize,
+    volatility_suppressed: usize,
 }
 
 impl ArbitrageDaemon {
@@ -338,6 +349,34 @@ async fn run_arbitrage_scan(
                 FROM fresh_listings
                 GROUP BY item_id, hq, world_id
             ),
+            ask_ranked AS (
+                SELECT item_id, hq, world_id, price_per_unit,
+                       ROW_NUMBER() OVER(PARTITION BY item_id, hq, world_id ORDER BY price_per_unit ASC, timestamp DESC) as ask_rn
+                FROM fresh_listings
+            ),
+            ask_clusters AS (
+                SELECT item_id,
+                       hq,
+                       world_id,
+                       (AVG(price_per_unit) FILTER (WHERE ask_rn <= 3))::double precision AS current_ask_cluster_avg
+                FROM ask_ranked
+                GROUP BY item_id, hq, world_id
+            ),
+            sales_ranked AS (
+                SELECT sold_item_id AS item_id,
+                       hq,
+                       world_id,
+                       quantity,
+                       price_per_item,
+                       sold_date,
+                       ROW_NUMBER() OVER(PARTITION BY sold_item_id, hq, world_id ORDER BY sold_date DESC) AS sale_rn,
+                       COUNT(*) OVER(PARTITION BY sold_item_id, hq, world_id) AS sale_count
+                FROM sale_history
+                WHERE world_id = ANY($6)
+                  AND sold_item_id = ANY($4)
+                  AND sold_date > $3
+                  AND price_per_item > 0
+            ),
             sales_48h AS (
                 SELECT sold_item_id AS item_id,
                        hq,
@@ -350,6 +389,20 @@ async fn run_arbitrage_scan(
                   AND sold_date > $3
                   AND price_per_item > 0
                 GROUP BY sold_item_id, hq, world_id
+            ),
+            sales_clusters AS (
+                SELECT item_id,
+                       hq,
+                       world_id,
+                       MAX(GREATEST(3, CEIL(sale_count::double precision * 0.30)::integer)) AS regime_recent_window_count,
+                       COUNT(*) FILTER (WHERE sale_rn <= GREATEST(3, CEIL(sale_count::double precision * 0.30)::integer))::integer AS recent_cluster_sales_count,
+                       COUNT(*) FILTER (WHERE sale_rn > GREATEST(3, CEIL(sale_count::double precision * 0.30)::integer))::integer AS prior_cluster_sales_count,
+                       (AVG(price_per_item) FILTER (WHERE sale_rn <= GREATEST(3, CEIL(sale_count::double precision * 0.30)::integer)))::double precision AS recent_cluster_avg_price,
+                       (AVG(price_per_item) FILTER (WHERE sale_rn > GREATEST(3, CEIL(sale_count::double precision * 0.30)::integer)))::double precision AS prior_cluster_avg_price,
+                       (STDDEV_SAMP(price_per_item) FILTER (WHERE sale_rn <= GREATEST(3, CEIL(sale_count::double precision * 0.30)::integer)))::double precision AS recent_cluster_stddev,
+                       (STDDEV_SAMP(price_per_item) FILTER (WHERE sale_rn > GREATEST(3, CEIL(sale_count::double precision * 0.30)::integer)))::double precision AS prior_cluster_stddev
+                FROM sales_ranked
+                GROUP BY item_id, hq, world_id
             )
             SELECT s.item_id, s.hq, s.world_id as source_world_id, d.world_id as dest_world_id,
                    s.price_per_unit as source_price,
@@ -357,7 +410,35 @@ async fn run_arbitrage_scan(
                    s.quantity as source_qty,
                    s.timestamp as source_timestamp,
                    active.active_count as dest_active_count,
-                   sales.units_sold as units_sold_48h
+                   sales.units_sold as units_sold_48h,
+                   COALESCE(clusters.regime_recent_window_count, 0)::integer AS regime_recent_window_count,
+                   clusters.recent_cluster_avg_price,
+                   clusters.prior_cluster_avg_price,
+                   CASE
+                       WHEN clusters.prior_cluster_avg_price IS NOT NULL AND clusters.prior_cluster_avg_price > 0
+                       THEN clusters.recent_cluster_avg_price / clusters.prior_cluster_avg_price
+                       ELSE NULL
+                   END AS price_jump_ratio,
+                   CASE
+                       WHEN clusters.recent_cluster_avg_price IS NOT NULL AND clusters.recent_cluster_avg_price > 0
+                       THEN clusters.recent_cluster_stddev / clusters.recent_cluster_avg_price
+                       ELSE NULL
+                   END AS within_cluster_cv_recent,
+                   CASE
+                       WHEN clusters.prior_cluster_avg_price IS NOT NULL AND clusters.prior_cluster_avg_price > 0
+                       THEN clusters.prior_cluster_stddev / clusters.prior_cluster_avg_price
+                       ELSE NULL
+                   END AS within_cluster_cv_prior,
+                   COALESCE(clusters.recent_cluster_sales_count, 0)::integer AS recent_cluster_sales_count,
+                   COALESCE(clusters.prior_cluster_sales_count, 0)::integer AS prior_cluster_sales_count,
+                   asks.current_ask_cluster_avg,
+                   CASE
+                       WHEN clusters.recent_cluster_avg_price IS NOT NULL
+                         AND clusters.recent_cluster_avg_price > 0
+                         AND asks.current_ask_cluster_avg IS NOT NULL
+                       THEN ABS(asks.current_ask_cluster_avg - clusters.recent_cluster_avg_price) / clusters.recent_cluster_avg_price * 100.0
+                       ELSE NULL
+                   END AS ask_vs_recent_sale_gap_pct
             FROM min_prices s
             JOIN min_prices d ON s.item_id = d.item_id AND s.hq = d.hq
             JOIN active_counts active ON active.item_id = d.item_id
@@ -366,6 +447,12 @@ async fn run_arbitrage_scan(
             JOIN sales_48h sales ON sales.item_id = d.item_id
                                 AND sales.hq = d.hq
                                 AND sales.world_id = d.world_id
+            LEFT JOIN sales_clusters clusters ON clusters.item_id = d.item_id
+                                             AND clusters.hq = d.hq
+                                             AND clusters.world_id = d.world_id
+            LEFT JOIN ask_clusters asks ON asks.item_id = d.item_id
+                                       AND asks.hq = d.hq
+                                       AND asks.world_id = d.world_id
             WHERE s.world_id = ANY($5) AND d.world_id = ANY($6)
               AND s.world_id != d.world_id
               AND s.rn = 1 AND d.rn = 1
@@ -471,6 +558,21 @@ async fn run_arbitrage_scan(
                 continue;
             }
 
+            let volatility_flag = volatility_flag(
+                cand.price_jump_ratio,
+                cand.recent_cluster_sales_count,
+                cand.ask_vs_recent_sale_gap_pct,
+                settings.max_price_jump_ratio,
+                settings.min_recent_cluster_confirmations,
+                settings.require_ask_confirmation,
+                settings.max_ask_vs_sale_gap_percent,
+            );
+
+            if volatility_flag != "NONE" && settings.volatility_action == "SUPPRESS" {
+                stats.volatility_suppressed += 1;
+                continue;
+            }
+
             let over_budget = total_cost > profile.gil_balance;
             let listing_age_seconds = Utc::now()
                 .naive_utc()
@@ -492,6 +594,17 @@ async fn run_arbitrage_scan(
                 quantity_available: qty_to_buy,
                 over_budget,
                 travel_tier: travel_tier.to_string(),
+                volatility_flag: volatility_flag.to_string(),
+                regime_recent_window_count: cand.regime_recent_window_count,
+                recent_cluster_avg_price: cand.recent_cluster_avg_price,
+                prior_cluster_avg_price: cand.prior_cluster_avg_price,
+                price_jump_ratio: cand.price_jump_ratio,
+                within_cluster_cv_recent: cand.within_cluster_cv_recent,
+                within_cluster_cv_prior: cand.within_cluster_cv_prior,
+                recent_cluster_sales_count: cand.recent_cluster_sales_count,
+                prior_cluster_sales_count: cand.prior_cluster_sales_count,
+                current_ask_cluster_avg: cand.current_ask_cluster_avg,
+                ask_vs_recent_sale_gap_pct: cand.ask_vs_recent_sale_gap_pct,
                 computed_at: Utc::now().naive_utc(),
             });
         }
@@ -512,6 +625,7 @@ async fn run_arbitrage_scan(
             velocity_rejected = stats.velocity_rejected,
             gross_profit_rejected = stats.gross_profit_rejected,
             net_profit_rejected = stats.net_profit_rejected,
+            volatility_suppressed = stats.volatility_suppressed,
             elapsed_ms = profile_started.elapsed().as_millis(),
             "Saved arbitrage opportunities"
         );
@@ -531,6 +645,40 @@ async fn run_arbitrage_scan(
 
 fn is_market_board_candidate(item: &xiv_gen::Item) -> bool {
     item.item_search_category > 1 && !item.name.trim().is_empty() && item.stack_size > 0
+}
+
+fn volatility_flag(
+    price_jump_ratio: Option<f64>,
+    recent_cluster_sales_count: i32,
+    ask_vs_recent_sale_gap_pct: Option<f64>,
+    max_price_jump_ratio: f64,
+    min_recent_cluster_confirmations: i32,
+    require_ask_confirmation: bool,
+    max_ask_vs_sale_gap_percent: f64,
+) -> &'static str {
+    let Some(price_jump_ratio) = price_jump_ratio else {
+        return "NONE";
+    };
+
+    if price_jump_ratio < max_price_jump_ratio {
+        return "NONE";
+    }
+
+    let mut flag = if recent_cluster_sales_count < min_recent_cluster_confirmations {
+        "UNCONFIRMED_SPIKE"
+    } else {
+        "CONFIRMED_REGIME_CHANGE"
+    };
+
+    if require_ask_confirmation
+        && ask_vs_recent_sale_gap_pct
+            .map(|gap| gap > max_ask_vs_sale_gap_percent)
+            .unwrap_or(true)
+    {
+        flag = "UNCONFIRMED_SPIKE";
+    }
+
+    flag
 }
 
 async fn resolve_execution_worlds(

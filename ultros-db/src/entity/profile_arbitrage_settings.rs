@@ -18,6 +18,11 @@ pub struct Model {
     pub show_stale_panel: bool,
     pub require_home_world_sell_target: bool,
     pub source_world_scope: String,
+    pub max_price_jump_ratio: f64,
+    pub min_recent_cluster_confirmations: i32,
+    pub volatility_action: String,
+    pub require_ask_confirmation: bool,
+    pub max_ask_vs_sale_gap_percent: f64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -977,6 +977,7 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                             <th class="py-3 px-4">"Net Profit"</th>
                             <th class="py-3 px-4">"Velocity"</th>
                             <th class="py-3 px-4">"Travel"</th>
+                            <th class="py-3 px-4">"Risk"</th>
                             <th class="py-3 px-4">"Age"</th>
                             <th class="py-3 px-4">"Flags"</th>
                         </tr>
@@ -987,7 +988,7 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                             if let Some(error) = load_error() {
                                 vec![view! {
                                     <tr>
-                                        <td colspan="13" class="py-8 px-4 text-center text-rose-300">
+                                        <td colspan="14" class="py-8 px-4 text-center text-rose-300">
                                             {format!("Could not load arbitrage opportunities: {error}")}
                                         </td>
                                     </tr>
@@ -995,7 +996,7 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                             } else if loading() {
                                 vec![view! {
                                     <tr>
-                                        <td colspan="13" class="py-8 px-4 text-center text-gray-400">
+                                        <td colspan="14" class="py-8 px-4 text-center text-gray-400">
                                             "Loading arbitrage opportunities..."
                                         </td>
                                     </tr>
@@ -1003,7 +1004,7 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                             } else if opportunities.is_empty() {
                                 vec![view! {
                                     <tr>
-                                        <td colspan="13" class="py-8 px-4 text-center text-gray-400">
+                                        <td colspan="14" class="py-8 px-4 text-center text-gray-400">
                                             "No active flips found yet. The scanner runs after market updates and after profile/settings changes; lowering the velocity or profit thresholds can also reveal more candidates."
                                         </td>
                                     </tr>
@@ -1037,8 +1038,45 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                                         "CROSS_DC_TRAVEL" => "bg-amber-400/10 text-amber-300 border-amber-400/20",
                                         _ => "bg-zinc-700/40 text-zinc-300 border-zinc-600",
                                     };
+                                    let is_volatile = opp.volatility_flag != "NONE";
+                                    let risk_label = match opp.volatility_flag.as_str() {
+                                        "UNCONFIRMED_SPIKE" => "Review",
+                                        "CONFIRMED_REGIME_CHANGE" => "Regime",
+                                        _ => "Clean",
+                                    };
+                                    let risk_class = match opp.volatility_flag.as_str() {
+                                        "UNCONFIRMED_SPIKE" => "bg-amber-400/10 text-amber-300 border-amber-400/20",
+                                        "CONFIRMED_REGIME_CHANGE" => "bg-orange-400/10 text-orange-300 border-orange-400/20",
+                                        _ => "bg-emerald-400/10 text-emerald-300 border-emerald-400/20",
+                                    };
+                                    let jump_text = opp.price_jump_ratio
+                                        .map(|ratio| format!("Jump {:.0}%", (ratio - 1.0) * 100.0))
+                                        .unwrap_or_else(|| "No jump".to_string());
+                                    let ask_gap_text = opp.ask_vs_recent_sale_gap_pct
+                                        .map(|gap| format!("ask gap {:.1}%", gap))
+                                        .unwrap_or_else(|| "ask gap unknown".to_string());
+                                    let risk_title = format!(
+                                        "{}: recent {} sales avg {} vs prior {} sales avg {}; {}; recent CV {}; prior CV {}; {}",
+                                        opp.volatility_flag,
+                                        opp.recent_cluster_sales_count,
+                                        opp.recent_cluster_avg_price
+                                            .map(|price| format!("{:.0}", price))
+                                            .unwrap_or_else(|| "n/a".to_string()),
+                                        opp.prior_cluster_sales_count,
+                                        opp.prior_cluster_avg_price
+                                            .map(|price| format!("{:.0}", price))
+                                            .unwrap_or_else(|| "n/a".to_string()),
+                                        jump_text,
+                                        opp.within_cluster_cv_recent
+                                            .map(|cv| format!("{:.2}", cv))
+                                            .unwrap_or_else(|| "n/a".to_string()),
+                                        opp.within_cluster_cv_prior
+                                            .map(|cv| format!("{:.2}", cv))
+                                            .unwrap_or_else(|| "n/a".to_string()),
+                                        ask_gap_text
+                                    );
                                     view! {
-                                        <tr class="hover:bg-white/5 transition-colors">
+                                        <tr class=if is_volatile { "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] transition-colors" } else { "hover:bg-white/5 transition-colors" }>
                                             <td class="py-3 px-4 font-semibold text-gray-200">
                                                 <div class="flex items-center gap-3 min-w-[220px]">
                                                     <ItemIcon item_id=opp.item_id icon_size=IconSize::Small />
@@ -1072,6 +1110,22 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                                                 <span class=format!("px-2 py-0.5 rounded text-[10px] font-bold border {}", travel_class)>
                                                     {travel_label}
                                                 </span>
+                                            </td>
+                                            <td class="py-3 px-4">
+                                                <span
+                                                    class=format!("px-2 py-0.5 rounded text-[10px] font-bold border {}", risk_class)
+                                                    title=risk_title
+                                                >
+                                                    {risk_label}
+                                                </span>
+                                                <Show
+                                                    when=move || is_volatile
+                                                    fallback=|| ().into_any()
+                                                >
+                                                    <div class="mt-1 text-[10px] text-amber-200/80 font-mono whitespace-nowrap">
+                                                        {jump_text.clone()}
+                                                    </div>
+                                                </Show>
                                             </td>
                                             <td class="py-3 px-4 text-gray-400 font-mono">{format!("{}s", opp.listing_age_seconds)}</td>
                                             <td class="py-3 px-4">
@@ -1390,6 +1444,11 @@ fn SettingsView(
     let (min_profit_t, set_min_profit_t) = signal(0i64);
     let (require_home_sell, set_require_home_sell) = signal(true);
     let (source_scope, set_source_scope) = signal("SAME_DC".to_string());
+    let (max_price_jump_ratio, set_max_price_jump_ratio) = signal(1.30f64);
+    let (min_recent_cluster_confirmations, set_min_recent_cluster_confirmations) = signal(5i32);
+    let (volatility_action, set_volatility_action) = signal("DEMOTE_TO_REVIEW".to_string());
+    let (require_ask_confirmation, set_require_ask_confirmation) = signal(true);
+    let (max_ask_vs_sale_gap_percent, set_max_ask_vs_sale_gap_percent) = signal(15.0f64);
 
     let profile_for_effect = profile.clone();
     Effect::new(move |_| {
@@ -1403,6 +1462,11 @@ fn SettingsView(
                     set_min_profit_t(settings.min_profit_total);
                     set_require_home_sell(settings.require_home_world_sell_target);
                     set_source_scope(settings.source_world_scope);
+                    set_max_price_jump_ratio(settings.max_price_jump_ratio);
+                    set_min_recent_cluster_confirmations(settings.min_recent_cluster_confirmations);
+                    set_volatility_action(settings.volatility_action);
+                    set_require_ask_confirmation(settings.require_ask_confirmation);
+                    set_max_ask_vs_sale_gap_percent(settings.max_ask_vs_sale_gap_percent);
                 }
             });
         }
@@ -1430,6 +1494,11 @@ fn SettingsView(
             let min_pt = min_profit_t();
             let require_home = require_home_sell();
             let scope = source_scope();
+            let jump_ratio = max_price_jump_ratio();
+            let confirmations = min_recent_cluster_confirmations();
+            let vol_action = volatility_action();
+            let require_ask = require_ask_confirmation();
+            let ask_gap = max_ask_vs_sale_gap_percent();
 
             spawn_local(async move {
                 let _ = update_arbitrage_settings(
@@ -1447,6 +1516,11 @@ fn SettingsView(
                         "show_stale_panel": false,
                         "require_home_world_sell_target": require_home,
                         "source_world_scope": scope,
+                        "max_price_jump_ratio": jump_ratio,
+                        "min_recent_cluster_confirmations": confirmations,
+                        "volatility_action": vol_action,
+                        "require_ask_confirmation": require_ask,
+                        "max_ask_vs_sale_gap_percent": ask_gap,
                     }),
                 )
                 .await;
@@ -1518,45 +1592,50 @@ fn SettingsView(
 
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-gray-400 font-semibold mb-1">"Min Net Profit (Gil)"</label>
+                            <label class="block text-gray-400 font-semibold mb-1" title="Minimum profit after estimated travel cost is deducted. Higher values reduce noise but may hide smaller safe flips.">"Min Net Profit (Gil)"</label>
                             <input
                                 type="number"
+                                title="A flip is shown only when net profit is at least this amount."
                                 class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
                                 prop:value=min_profit
                                 on:input=move |ev| set_min_profit(event_target_value(&ev).parse::<i64>().unwrap_or(0))
                             />
                         </div>
                         <div>
-                            <label class="block text-gray-400 font-semibold mb-1">"Velocity Threshold"</label>
+                            <label class="block text-gray-400 font-semibold mb-1" title="Minimum recent sales pressure relative to active destination listings. Higher values favor items that move faster.">"Velocity Threshold"</label>
                             <input
                                 type="number"
                                 step="0.1"
+                                title="Computed as recent destination units sold divided by active destination listings."
                                 class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
                                 prop:value=vel_thresh
                                 on:input=move |ev| set_vel_thresh(event_target_value(&ev).parse::<f64>().unwrap_or(0.0))
                             />
                         </div>
                         <div>
-                            <label class="block text-gray-400 font-semibold mb-1">"Travel Cost Rate (Gil/Min)"</label>
+                            <label class="block text-gray-400 font-semibold mb-1" title="How much gil one minute of travel/setup time is worth to you. Used to reduce gross profit into net profit.">"Travel Cost Rate (Gil/Min)"</label>
                             <input
                                 type="number"
+                                title="Example: if your time is worth 600,000 gil/hour, use 10,000 gil/min."
                                 class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
                                 prop:value=travel_rate
                                 on:input=move |ev| set_travel_rate(event_target_value(&ev).parse::<i64>().unwrap_or(0))
                             />
                         </div>
                         <div>
-                            <label class="block text-gray-400 font-semibold mb-1">"Min Profit Floor (Gil)"</label>
+                            <label class="block text-gray-400 font-semibold mb-1" title="Minimum gross profit before travel cost. This filters tiny spreads early.">"Min Gross Profit (Gil)"</label>
                             <input
                                 type="number"
+                                title="Gross profit is (sell price - buy price) times quantity before travel cost."
                                 class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
                                 prop:value=min_profit_t
                                 on:input=move |ev| set_min_profit_t(event_target_value(&ev).parse::<i64>().unwrap_or(0))
                             />
                         </div>
                         <div>
-                            <label class="block text-gray-400 font-semibold mb-1">"Source Scope"</label>
+                            <label class="block text-gray-400 font-semibold mb-1" title="Controls how far the scanner looks for cheap buy-side listings. Wider scopes can find more profit but increase travel friction.">"Source Scope"</label>
                             <select
+                                title="Same data center is the practical default; same region allows cross-DC buys; home world only is lowest friction."
                                 class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
                                 prop:value=source_scope
                                 on:change=move |ev| set_source_scope(event_target_value(&ev))
@@ -1569,6 +1648,7 @@ fn SettingsView(
                         <label class="flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
                             <input
                                 type="checkbox"
+                                title="When enabled, sell-side destination is locked to your profile home world because FFXIV blocks market selling while visiting."
                                 class="mt-1 accent-violet-500"
                                 prop:checked=require_home_sell
                                 on:change=move |ev| set_require_home_sell(event_target_checked(&ev))
@@ -1578,6 +1658,70 @@ fn SettingsView(
                                 <span class="block text-xs text-gray-500">"Keeps arbitrage executable with FFXIV travel restrictions."</span>
                             </span>
                         </label>
+                    </div>
+
+                    <div class="rounded-xl border border-white/10 bg-zinc-950/30 p-4 space-y-4">
+                        <h4 class="text-sm font-semibold text-gray-300">"Volatility & Review Gates"</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-gray-400 font-semibold mb-1" title="Recent-vs-prior price jump ratio that flags a possible regime change. 1.30 means recent sales average is at least 30% above prior sales.">"Max Price Jump Ratio"</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    title="Lower values flag more items as volatile; higher values allow larger recent price jumps."
+                                    class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=max_price_jump_ratio
+                                    on:input=move |ev| set_max_price_jump_ratio(event_target_value(&ev).parse::<f64>().unwrap_or(1.30))
+                                />
+                            </div>
+                            <div>
+                                <label class="block text-gray-400 font-semibold mb-1" title="Minimum recent sales needed before a price jump can be called a confirmed regime change instead of an unconfirmed spike.">"Recent Confirmations"</label>
+                                <input
+                                    type="number"
+                                    title="Higher values keep more jumps in review until more sales confirm the new price level."
+                                    class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=min_recent_cluster_confirmations
+                                    on:input=move |ev| set_min_recent_cluster_confirmations(event_target_value(&ev).parse::<i32>().unwrap_or(5))
+                                />
+                            </div>
+                            <div>
+                                <label class="block text-gray-400 font-semibold mb-1" title="What to do when an item has a suspicious recent price jump.">"Volatility Action"</label>
+                                <select
+                                    title="Suppress hides volatile rows; Review keeps them separate; Warn keeps them in the main table with a warning."
+                                    class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=volatility_action
+                                    on:change=move |ev| set_volatility_action(event_target_value(&ev))
+                                >
+                                    <option value="DEMOTE_TO_REVIEW">"Demote to review"</option>
+                                    <option value="SUPPRESS">"Suppress"</option>
+                                    <option value="ALERT_WITH_WARNING">"Warn only"</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-gray-400 font-semibold mb-1" title="Maximum allowed difference between current low asks and the recent sale cluster. If asks disagree too much, a confirmed jump is downgraded to unconfirmed.">"Max Ask Gap (%)"</label>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    title="Lower values require live listings to closely corroborate recent sales; higher values tolerate noisier ask prices."
+                                    class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=max_ask_vs_sale_gap_percent
+                                    on:input=move |ev| set_max_ask_vs_sale_gap_percent(event_target_value(&ev).parse::<f64>().unwrap_or(15.0))
+                                />
+                            </div>
+                            <label class="col-span-2 flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
+                                <input
+                                    type="checkbox"
+                                    title="When enabled, current low asks must support the recent sale cluster before a price jump is considered confirmed."
+                                    class="mt-1 accent-violet-500"
+                                    prop:checked=require_ask_confirmation
+                                    on:change=move |ev| set_require_ask_confirmation(event_target_checked(&ev))
+                                />
+                                <span>
+                                    <span class="block font-semibold text-gray-300">"Require ask confirmation"</span>
+                                    <span class="block text-xs text-gray-500">"Downgrades jumps when live listings do not corroborate recent sale prices."</span>
+                                </span>
+                            </label>
+                        </div>
                     </div>
 
                     <div class="flex justify-end pt-4">

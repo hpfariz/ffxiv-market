@@ -51,6 +51,16 @@ pub struct ArbitrageSettingsPayload {
     pub require_home_world_sell_target: bool,
     #[serde(default = "default_source_world_scope")]
     pub source_world_scope: String,
+    #[serde(default = "default_max_price_jump_ratio")]
+    pub max_price_jump_ratio: f64,
+    #[serde(default = "default_min_recent_cluster_confirmations")]
+    pub min_recent_cluster_confirmations: i32,
+    #[serde(default = "default_volatility_action")]
+    pub volatility_action: String,
+    #[serde(default = "default_require_ask_confirmation")]
+    pub require_ask_confirmation: bool,
+    #[serde(default = "default_max_ask_vs_sale_gap_percent")]
+    pub max_ask_vs_sale_gap_percent: f64,
 }
 
 #[derive(Deserialize)]
@@ -99,11 +109,39 @@ fn default_source_world_scope() -> String {
     "SAME_DC".to_string()
 }
 
+fn default_max_price_jump_ratio() -> f64 {
+    1.30
+}
+
+fn default_min_recent_cluster_confirmations() -> i32 {
+    5
+}
+
+fn default_volatility_action() -> String {
+    "DEMOTE_TO_REVIEW".to_string()
+}
+
+fn default_require_ask_confirmation() -> bool {
+    true
+}
+
+fn default_max_ask_vs_sale_gap_percent() -> f64 {
+    15.0
+}
+
 fn normalize_source_world_scope(scope: &str) -> anyhow::Result<String> {
     let normalized = scope.trim().to_ascii_uppercase();
     match normalized.as_str() {
         "CURRENT_WORLD" | "SAME_DC" | "SAME_REGION" => Ok(normalized),
         _ => Err(anyhow::anyhow!("invalid source_world_scope")),
+    }
+}
+
+fn normalize_volatility_action(action: &str) -> anyhow::Result<String> {
+    let normalized = action.trim().to_ascii_uppercase();
+    match normalized.as_str() {
+        "SUPPRESS" | "DEMOTE_TO_REVIEW" | "ALERT_WITH_WARNING" => Ok(normalized),
+        _ => Err(anyhow::anyhow!("invalid volatility_action")),
     }
 }
 
@@ -304,6 +342,7 @@ pub async fn update_arbitrage_settings(
 ) -> Result<Json<profile_arbitrage_settings::Model>, ApiError> {
     let _ = check_profile_owner(&db, id, user.id as i64).await?;
     let source_world_scope = normalize_source_world_scope(&payload.source_world_scope)?;
+    let volatility_action = normalize_volatility_action(&payload.volatility_action)?;
 
     let active_model = profile_arbitrage_settings::ActiveModel {
         profile_id: sea_orm::ActiveValue::Set(id),
@@ -321,6 +360,15 @@ pub async fn update_arbitrage_settings(
             payload.require_home_world_sell_target,
         ),
         source_world_scope: sea_orm::ActiveValue::Set(source_world_scope),
+        max_price_jump_ratio: sea_orm::ActiveValue::Set(payload.max_price_jump_ratio.max(1.0)),
+        min_recent_cluster_confirmations: sea_orm::ActiveValue::Set(
+            payload.min_recent_cluster_confirmations.max(1),
+        ),
+        volatility_action: sea_orm::ActiveValue::Set(volatility_action),
+        require_ask_confirmation: sea_orm::ActiveValue::Set(payload.require_ask_confirmation),
+        max_ask_vs_sale_gap_percent: sea_orm::ActiveValue::Set(
+            payload.max_ask_vs_sale_gap_percent.max(0.0),
+        ),
     };
 
     let updated = db.update_arbitrage_settings(id, active_model).await?;

@@ -1,0 +1,178 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProfileArbitrageSettings::Table)
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::MaxPriceJumpRatio)
+                            .double()
+                            .not_null()
+                            .default(1.30),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::MinRecentClusterConfirmations)
+                            .integer()
+                            .not_null()
+                            .default(5),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::VolatilityAction)
+                            .string()
+                            .not_null()
+                            .default("DEMOTE_TO_REVIEW"),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::RequireAskConfirmation)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::MaxAskVsSaleGapPercent)
+                            .double()
+                            .not_null()
+                            .default(15.0),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ArbitrageOpportunity::Table)
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::VolatilityFlag)
+                            .string()
+                            .not_null()
+                            .default("NONE"),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::RegimeRecentWindowCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::RecentClusterAvgPrice)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::PriorClusterAvgPrice)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::PriceJumpRatio)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::WithinClusterCvRecent)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::WithinClusterCvPrior)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::RecentClusterSalesCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::PriorClusterSalesCount)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::CurrentAskClusterAvg)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::AskVsRecentSaleGapPct)
+                            .double()
+                            .null(),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ArbitrageOpportunity::Table)
+                    .drop_column(ArbitrageOpportunity::AskVsRecentSaleGapPct)
+                    .drop_column(ArbitrageOpportunity::CurrentAskClusterAvg)
+                    .drop_column(ArbitrageOpportunity::PriorClusterSalesCount)
+                    .drop_column(ArbitrageOpportunity::RecentClusterSalesCount)
+                    .drop_column(ArbitrageOpportunity::WithinClusterCvPrior)
+                    .drop_column(ArbitrageOpportunity::WithinClusterCvRecent)
+                    .drop_column(ArbitrageOpportunity::PriceJumpRatio)
+                    .drop_column(ArbitrageOpportunity::PriorClusterAvgPrice)
+                    .drop_column(ArbitrageOpportunity::RecentClusterAvgPrice)
+                    .drop_column(ArbitrageOpportunity::RegimeRecentWindowCount)
+                    .drop_column(ArbitrageOpportunity::VolatilityFlag)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProfileArbitrageSettings::Table)
+                    .drop_column(ProfileArbitrageSettings::MaxAskVsSaleGapPercent)
+                    .drop_column(ProfileArbitrageSettings::RequireAskConfirmation)
+                    .drop_column(ProfileArbitrageSettings::VolatilityAction)
+                    .drop_column(ProfileArbitrageSettings::MinRecentClusterConfirmations)
+                    .drop_column(ProfileArbitrageSettings::MaxPriceJumpRatio)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+}
+
+#[derive(Iden)]
+enum ProfileArbitrageSettings {
+    Table,
+    MaxPriceJumpRatio,
+    MinRecentClusterConfirmations,
+    VolatilityAction,
+    RequireAskConfirmation,
+    MaxAskVsSaleGapPercent,
+}
+
+#[derive(Iden)]
+enum ArbitrageOpportunity {
+    Table,
+    VolatilityFlag,
+    RegimeRecentWindowCount,
+    RecentClusterAvgPrice,
+    PriorClusterAvgPrice,
+    PriceJumpRatio,
+    WithinClusterCvRecent,
+    WithinClusterCvPrior,
+    RecentClusterSalesCount,
+    PriorClusterSalesCount,
+    CurrentAskClusterAvg,
+    AskVsRecentSaleGapPct,
+}

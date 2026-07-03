@@ -1217,6 +1217,11 @@ pub(crate) struct ProfileArbitrageSettings {
     pub show_stale_panel: bool,
     pub require_home_world_sell_target: bool,
     pub source_world_scope: String,
+    pub max_price_jump_ratio: f64,
+    pub min_recent_cluster_confirmations: i32,
+    pub volatility_action: String,
+    pub require_ask_confirmation: bool,
+    pub max_ask_vs_sale_gap_percent: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -1258,6 +1263,17 @@ pub(crate) struct ArbitrageOpportunity {
     pub quantity_available: i32,
     pub over_budget: bool,
     pub travel_tier: String,
+    pub volatility_flag: String,
+    pub regime_recent_window_count: i32,
+    pub recent_cluster_avg_price: Option<f64>,
+    pub prior_cluster_avg_price: Option<f64>,
+    pub price_jump_ratio: Option<f64>,
+    pub within_cluster_cv_recent: Option<f64>,
+    pub within_cluster_cv_prior: Option<f64>,
+    pub recent_cluster_sales_count: i32,
+    pub prior_cluster_sales_count: i32,
+    pub current_ask_cluster_avg: Option<f64>,
+    pub ask_vs_recent_sale_gap_pct: Option<f64>,
     pub computed_at: chrono::NaiveDateTime,
 }
 

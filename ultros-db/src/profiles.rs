@@ -71,6 +71,11 @@ impl UltrosDb {
             show_stale_panel: Set(false),
             require_home_world_sell_target: Set(true),
             source_world_scope: Set("SAME_DC".to_string()),
+            max_price_jump_ratio: Set(1.30),
+            min_recent_cluster_confirmations: Set(5),
+            volatility_action: Set("DEMOTE_TO_REVIEW".to_string()),
+            require_ask_confirmation: Set(true),
+            max_ask_vs_sale_gap_percent: Set(15.0),
         }
         .insert(&txn)
         .await?;
@@ -183,6 +188,11 @@ impl UltrosDb {
                 show_stale_panel: Set(false),
                 require_home_world_sell_target: Set(true),
                 source_world_scope: Set("SAME_DC".to_string()),
+                max_price_jump_ratio: Set(1.30),
+                min_recent_cluster_confirmations: Set(5),
+                volatility_action: Set("DEMOTE_TO_REVIEW".to_string()),
+                require_ask_confirmation: Set(true),
+                max_ask_vs_sale_gap_percent: Set(15.0),
             }
             .insert(&self.db)
             .await?;
@@ -399,6 +409,17 @@ impl UltrosDb {
                     quantity_available: Set(opp.quantity_available),
                     over_budget: Set(opp.over_budget),
                     travel_tier: Set(opp.travel_tier),
+                    volatility_flag: Set(opp.volatility_flag),
+                    regime_recent_window_count: Set(opp.regime_recent_window_count),
+                    recent_cluster_avg_price: Set(opp.recent_cluster_avg_price),
+                    prior_cluster_avg_price: Set(opp.prior_cluster_avg_price),
+                    price_jump_ratio: Set(opp.price_jump_ratio),
+                    within_cluster_cv_recent: Set(opp.within_cluster_cv_recent),
+                    within_cluster_cv_prior: Set(opp.within_cluster_cv_prior),
+                    recent_cluster_sales_count: Set(opp.recent_cluster_sales_count),
+                    prior_cluster_sales_count: Set(opp.prior_cluster_sales_count),
+                    current_ask_cluster_avg: Set(opp.current_ask_cluster_avg),
+                    ask_vs_recent_sale_gap_pct: Set(opp.ask_vs_recent_sale_gap_pct),
                     computed_at: Set(opp.computed_at),
                 })
                 .collect();

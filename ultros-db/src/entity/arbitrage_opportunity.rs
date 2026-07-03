@@ -19,6 +19,17 @@ pub struct Model {
     pub quantity_available: i32,
     pub over_budget: bool,
     pub travel_tier: String,
+    pub volatility_flag: String,
+    pub regime_recent_window_count: i32,
+    pub recent_cluster_avg_price: Option<f64>,
+    pub prior_cluster_avg_price: Option<f64>,
+    pub price_jump_ratio: Option<f64>,
+    pub within_cluster_cv_recent: Option<f64>,
+    pub within_cluster_cv_prior: Option<f64>,
+    pub recent_cluster_sales_count: i32,
+    pub prior_cluster_sales_count: i32,
+    pub current_ask_cluster_avg: Option<f64>,
+    pub ask_vs_recent_sale_gap_pct: Option<f64>,
     pub computed_at: DateTime,
 }
 
