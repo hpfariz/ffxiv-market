@@ -308,9 +308,11 @@ async fn main() -> Result<()> {
 
     // Start arbitrage daemon
     let arbitrage_trigger = Arc::new(tokio::sync::Notify::new());
+    let arbitrage_scan_status = crate::worker::arbitrage_daemon::ArbitrageScanStatusTracker::new();
     let arbitrage_daemon = crate::worker::arbitrage_daemon::ArbitrageDaemon::new(
         db.clone(),
         arbitrage_trigger.clone(),
+        arbitrage_scan_status.clone(),
     );
     arbitrage_daemon.start(token.clone());
     arbitrage_trigger.notify_one();
@@ -318,9 +320,13 @@ async fn main() -> Result<()> {
     // Trigger arbitrage scan on listings update
     let listings_rx = senders.listings.subscribe();
     let trigger_clone = arbitrage_trigger.clone();
+    let status_clone = arbitrage_scan_status.clone();
     tokio::spawn(async move {
         let mut listings_rx = listings_rx;
         while let Ok(_event) = listings_rx.recv().await {
+            status_clone
+                .mark_queued("Market listings changed; scanner queued")
+                .await;
             trigger_clone.notify_one();
         }
     });
@@ -480,6 +486,7 @@ async fn main() -> Result<()> {
         token: token.clone(),
         ch_client,
         arbitrage_trigger,
+        arbitrage_scan_status,
         health_monitor,
     };
     let web_task = tokio::spawn(web::start_web(web_state));

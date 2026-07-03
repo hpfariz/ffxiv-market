@@ -17,6 +17,7 @@ use crate::event::{EventReceivers, EventSenders};
 use crate::search_service::SearchService;
 use crate::web::character_verifier_service::CharacterVerifierService;
 use crate::web::oauth::{AuthUserCache, DiscordAuthConfig};
+use crate::worker::arbitrage_daemon::ArbitrageScanStatusTracker;
 
 #[derive(Clone)]
 pub(crate) struct WebState {
@@ -38,6 +39,7 @@ pub(crate) struct WebState {
     /// only writes via the analyzer's dual-write path).
     pub(crate) ch_client: ClickHouseClient,
     pub(crate) arbitrage_trigger: Arc<tokio::sync::Notify>,
+    pub(crate) arbitrage_scan_status: ArbitrageScanStatusTracker,
     pub(crate) health_monitor: Arc<crate::worker::ws_health_monitor::WsHealthMonitor>,
 }
 
@@ -122,6 +124,12 @@ impl FromRef<WebState> for ClickHouseClient {
 impl FromRef<WebState> for Arc<tokio::sync::Notify> {
     fn from_ref(input: &WebState) -> Self {
         input.arbitrage_trigger.clone()
+    }
+}
+
+impl FromRef<WebState> for ArbitrageScanStatusTracker {
+    fn from_ref(input: &WebState) -> Self {
+        input.arbitrage_scan_status.clone()
     }
 }
 

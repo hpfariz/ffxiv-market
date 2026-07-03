@@ -15,6 +15,7 @@ use ultros_db::{UltrosDb, entity::*, lists::ListError};
 
 use crate::web::error::ApiError;
 use crate::web::oauth::AuthDiscordUser;
+use crate::worker::arbitrage_daemon::{ArbitrageScanStatus, ArbitrageScanStatusTracker};
 
 // Payload structs
 #[derive(Deserialize)]
@@ -297,6 +298,7 @@ pub async fn update_arbitrage_settings(
     user: AuthDiscordUser,
     State(db): State<UltrosDb>,
     State(arbitrage_trigger): State<Arc<tokio::sync::Notify>>,
+    State(arbitrage_status): State<ArbitrageScanStatusTracker>,
     Path(id): Path<i32>,
     Json(payload): Json<ArbitrageSettingsPayload>,
 ) -> Result<Json<profile_arbitrage_settings::Model>, ApiError> {
@@ -322,6 +324,9 @@ pub async fn update_arbitrage_settings(
     };
 
     let updated = db.update_arbitrage_settings(id, active_model).await?;
+    arbitrage_status
+        .mark_queued("Arbitrage settings changed; scanner queued")
+        .await;
     arbitrage_trigger.notify_one();
     Ok(Json(updated))
 }
@@ -406,6 +411,31 @@ pub async fn get_arbitrage_opportunities(
     require_profile_setup(&db, &profile).await?;
     let opportunities = db.get_arbitrage_opportunities(id).await?;
     Ok(Json(opportunities))
+}
+
+pub async fn get_arbitrage_scan_status(
+    user: AuthDiscordUser,
+    State(db): State<UltrosDb>,
+    State(arbitrage_status): State<ArbitrageScanStatusTracker>,
+    Path(id): Path<i32>,
+) -> Result<Json<ArbitrageScanStatus>, ApiError> {
+    let _ = check_profile_owner(&db, id, user.id as i64).await?;
+    Ok(Json(arbitrage_status.get().await))
+}
+
+pub async fn trigger_arbitrage_scan(
+    user: AuthDiscordUser,
+    State(db): State<UltrosDb>,
+    State(arbitrage_trigger): State<Arc<tokio::sync::Notify>>,
+    State(arbitrage_status): State<ArbitrageScanStatusTracker>,
+    Path(id): Path<i32>,
+) -> Result<Json<ArbitrageScanStatus>, ApiError> {
+    let _ = check_profile_owner(&db, id, user.id as i64).await?;
+    arbitrage_status
+        .mark_queued("Manual refresh requested; scanner queued")
+        .await;
+    arbitrage_trigger.notify_one();
+    Ok(Json(arbitrage_status.get().await))
 }
 
 pub async fn get_crafting_opportunities(

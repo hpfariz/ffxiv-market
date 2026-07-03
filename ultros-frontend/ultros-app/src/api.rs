@@ -1142,6 +1142,14 @@ pub(crate) async fn get_arbitrage_opportunities_api(
     fetch_api(&format!("/api/v1/profiles/{id}/arbitrage")).await
 }
 
+pub(crate) async fn get_arbitrage_scan_status_api(id: i32) -> AppResult<ArbitrageScanStatus> {
+    fetch_api(&format!("/api/v1/profiles/{id}/arbitrage/status")).await
+}
+
+pub(crate) async fn trigger_arbitrage_scan_api(id: i32) -> AppResult<ArbitrageScanStatus> {
+    post_api(&format!("/api/v1/profiles/{id}/arbitrage"), ()).await
+}
+
 pub(crate) async fn get_crafting_opportunities_api(
     id: i32,
     show_all_levels: bool,
@@ -1251,6 +1259,19 @@ pub(crate) struct ArbitrageOpportunity {
     pub over_budget: bool,
     pub travel_tier: String,
     pub computed_at: chrono::NaiveDateTime,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub(crate) struct ArbitrageScanStatus {
+    pub phase: String,
+    pub message: String,
+    pub progress_percent: u8,
+    pub profiles_scanned: i32,
+    pub profiles_total: i32,
+    pub queued_at: Option<String>,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub last_error: Option<String>,
 }
 
 #[cfg(all(test, feature = "ssr"))]

@@ -780,18 +780,28 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
     let (loading, set_loading) = signal(true);
     let (load_error, set_load_error) = signal(None::<String>);
     let (refresh_tick, set_refresh_tick) = signal(0u32);
+    let (status_tick, set_status_tick) = signal(0u32);
+    let (scan_status, set_scan_status) = signal(None::<ArbitrageScanStatus>);
+    let (last_seen_scan_completion, set_last_seen_scan_completion) = signal(None::<String>);
     let (last_refreshed, set_last_refreshed) = signal(None::<String>);
 
     #[cfg(feature = "hydrate")]
     {
-        let interval = send_wrapper::SendWrapper::new(gloo_timers::callback::Interval::new(
+        let table_interval = send_wrapper::SendWrapper::new(gloo_timers::callback::Interval::new(
             60_000,
             move || {
                 set_refresh_tick.update(|tick| *tick = tick.wrapping_add(1));
             },
         ));
+        let status_interval = send_wrapper::SendWrapper::new(gloo_timers::callback::Interval::new(
+            5_000,
+            move || {
+                set_status_tick.update(|tick| *tick = tick.wrapping_add(1));
+            },
+        ));
         on_cleanup(move || {
-            drop(interval);
+            drop(table_interval);
+            drop(status_interval);
         });
     }
 
@@ -823,6 +833,52 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
         }
     });
 
+    Effect::new(move |_| {
+        let _ = status_tick();
+        if let Some(pid) = profile_id {
+            spawn_local(async move {
+                if let Ok(status) = get_arbitrage_scan_status_api(pid).await {
+                    if status.phase == "complete" {
+                        if let Some(completed_at) = status.completed_at.clone() {
+                            if last_seen_scan_completion() != Some(completed_at.clone()) {
+                                set_last_seen_scan_completion(Some(completed_at));
+                                set_refresh_tick.update(|tick| *tick = tick.wrapping_add(1));
+                            }
+                        }
+                    }
+                    set_scan_status(Some(status));
+                }
+            });
+        } else {
+            set_scan_status(None);
+        }
+    });
+
+    let request_scan = move |_| {
+        if let Some(pid) = profile_id {
+            set_scan_status(Some(ArbitrageScanStatus {
+                phase: "queued".to_string(),
+                message: "Manual refresh requested; scanner queued".to_string(),
+                progress_percent: 5,
+                profiles_scanned: 0,
+                profiles_total: 0,
+                queued_at: None,
+                started_at: None,
+                completed_at: None,
+                last_error: None,
+            }));
+            spawn_local(async move {
+                if let Ok(status) = trigger_arbitrage_scan_api(pid).await {
+                    set_scan_status(Some(status));
+                    set_status_tick.update(|tick| *tick = tick.wrapping_add(1));
+                }
+                set_refresh_tick.update(|tick| *tick = tick.wrapping_add(1));
+            });
+        } else {
+            set_refresh_tick.update(|tick| *tick = tick.wrapping_add(1));
+        }
+    };
+
     view! {
         <div class="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 shadow-xl space-y-6">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -837,12 +893,75 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                 <button
                     class="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm font-semibold text-gray-200 transition-all hover:border-violet-500/40 hover:bg-violet-500/10 disabled:cursor-wait disabled:opacity-60"
                     disabled=loading
-                    on:click=move |_| set_refresh_tick.update(|tick| *tick = tick.wrapping_add(1))
+                    on:click=request_scan
                 >
                     <Icon icon=i::BiRefreshRegular attr:class="size-4 text-violet-300" />
-                    "Refresh"
+                    "Refresh Scan"
                 </button>
             </div>
+
+            <Show
+                when=move || scan_status().is_some()
+                fallback=|| view! {}.into_any()
+            >
+                {move || {
+                    scan_status()
+                        .map(|status| {
+                            let phase_class = match status.phase.as_str() {
+                                "failed" => "text-red-300",
+                                "complete" => "text-emerald-300",
+                                "queued" | "scanning" => "text-violet-200",
+                                _ => "text-gray-300",
+                            };
+                            let detail = if status.profiles_total > 0 {
+                                format!(
+                                    "{} of {} profiles",
+                                    status.profiles_scanned, status.profiles_total
+                                )
+                            } else {
+                                status.phase.clone()
+                            };
+                            let bar_class = match status.phase.as_str() {
+                                "failed" => "h-full rounded-full bg-red-400 transition-all duration-500",
+                                "complete" => "h-full rounded-full bg-emerald-400 transition-all duration-500",
+                                _ => "h-full rounded-full bg-violet-400 transition-all duration-500",
+                            };
+                            let progress_percent = status.progress_percent;
+                            let progress_label = format!("{progress_percent}%");
+                            let progress_style = format!("width: {progress_percent}%;");
+                            let message = status.message.clone();
+                            let error_message = status.last_error.clone().unwrap_or_default();
+                            let has_error = !error_message.is_empty();
+                            view! {
+                                <div class="space-y-2 rounded-lg border border-white/10 bg-zinc-950/40 p-3">
+                                    <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                                        <div class="text-sm">
+                                            <span class=format!("font-semibold {phase_class}")>{message}</span>
+                                            <span class="ml-2 text-xs text-gray-500">{detail}</span>
+                                        </div>
+                                        <div class="text-xs text-gray-500">
+                                            {progress_label}
+                                        </div>
+                                    </div>
+                                    <div class="h-2 overflow-hidden rounded-full bg-white/10">
+                                        <div
+                                            class=bar_class
+                                            style=progress_style
+                                        ></div>
+                                    </div>
+                                    <Show
+                                        when=move || has_error
+                                        fallback=|| view! {}.into_any()
+                                    >
+                                        <div class="text-xs text-red-300">
+                                            {error_message.clone()}
+                                        </div>
+                                    </Show>
+                                </div>
+                            }.into_any()
+                        })
+                }}
+            </Show>
 
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-white/10 text-sm text-left">

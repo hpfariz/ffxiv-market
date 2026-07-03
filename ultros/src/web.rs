@@ -1495,7 +1495,12 @@ pub(crate) async fn start_web(state: WebState) {
         )
         .route(
             "/api/v1/profiles/{id}/arbitrage",
-            get(crate::web::api::profiles::get_arbitrage_opportunities),
+            get(crate::web::api::profiles::get_arbitrage_opportunities)
+                .post(crate::web::api::profiles::trigger_arbitrage_scan),
+        )
+        .route(
+            "/api/v1/profiles/{id}/arbitrage/status",
+            get(crate::web::api::profiles::get_arbitrage_scan_status),
         )
         .route(
             "/api/v1/profiles/{id}/crafting",

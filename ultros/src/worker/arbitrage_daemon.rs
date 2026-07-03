@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use chrono::{NaiveDateTime, Utc};
 use sea_orm::{ColumnTrait, DbBackend, EntityTrait, FromQueryResult, QueryFilter, Statement};
-use tokio::sync::Notify;
+use serde::Serialize;
+use tokio::sync::{Notify, RwLock};
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, instrument};
@@ -14,6 +15,107 @@ use ultros_db::entity::{arbitrage_opportunity, datacenter, player_profile, world
 pub struct ArbitrageDaemon {
     db: UltrosDb,
     trigger: Arc<Notify>,
+    status: ArbitrageScanStatusTracker,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ArbitrageScanStatus {
+    pub phase: String,
+    pub message: String,
+    pub progress_percent: u8,
+    pub profiles_scanned: i32,
+    pub profiles_total: i32,
+    pub queued_at: Option<String>,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub last_error: Option<String>,
+}
+
+impl Default for ArbitrageScanStatus {
+    fn default() -> Self {
+        Self {
+            phase: "idle".to_string(),
+            message: "Scanner has not run yet".to_string(),
+            progress_percent: 0,
+            profiles_scanned: 0,
+            profiles_total: 0,
+            queued_at: None,
+            started_at: None,
+            completed_at: None,
+            last_error: None,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct ArbitrageScanStatusTracker {
+    status: Arc<RwLock<ArbitrageScanStatus>>,
+}
+
+impl ArbitrageScanStatusTracker {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub async fn get(&self) -> ArbitrageScanStatus {
+        self.status.read().await.clone()
+    }
+
+    pub async fn mark_queued(&self, message: impl Into<String>) {
+        let mut status = self.status.write().await;
+        status.phase = "queued".to_string();
+        status.message = message.into();
+        status.progress_percent = 5;
+        status.queued_at = Some(Utc::now().to_rfc3339());
+        status.completed_at = None;
+        status.last_error = None;
+    }
+
+    async fn mark_scanning(&self, profiles_total: usize) {
+        let mut status = self.status.write().await;
+        status.phase = "scanning".to_string();
+        status.message = "Scanning arbitrage opportunities".to_string();
+        status.progress_percent = 10;
+        status.profiles_scanned = 0;
+        status.profiles_total = profiles_total as i32;
+        status.started_at = Some(Utc::now().to_rfc3339());
+        status.completed_at = None;
+        status.last_error = None;
+    }
+
+    async fn mark_profile_progress(&self, profiles_scanned: usize, profiles_total: usize) {
+        let mut status = self.status.write().await;
+        status.phase = "scanning".to_string();
+        status.profiles_scanned = profiles_scanned as i32;
+        status.profiles_total = profiles_total as i32;
+        status.progress_percent = if profiles_total == 0 {
+            90
+        } else {
+            let profile_progress = (profiles_scanned.saturating_mul(80) / profiles_total) as u8;
+            10u8.saturating_add(profile_progress).min(90)
+        };
+        status.message = format!("Scanning profile {profiles_scanned} of {profiles_total}");
+    }
+
+    async fn mark_complete(&self, profiles_total: usize) {
+        let mut status = self.status.write().await;
+        status.phase = "complete".to_string();
+        status.message = "Arbitrage scan complete".to_string();
+        status.progress_percent = 100;
+        status.profiles_scanned = profiles_total as i32;
+        status.profiles_total = profiles_total as i32;
+        status.completed_at = Some(Utc::now().to_rfc3339());
+        status.last_error = None;
+    }
+
+    async fn mark_failed(&self, error: &anyhow::Error) {
+        let mut status = self.status.write().await;
+        status.phase = "failed".to_string();
+        status.message = "Arbitrage scan failed".to_string();
+        status.progress_percent = 100;
+        status.completed_at = Some(Utc::now().to_rfc3339());
+        status.last_error = Some(error.to_string());
+    }
 }
 
 #[derive(FromQueryResult)]
@@ -45,26 +147,33 @@ struct ScanStats {
 }
 
 impl ArbitrageDaemon {
-    pub fn new(db: UltrosDb, trigger: Arc<Notify>) -> Self {
-        Self { db, trigger }
+    pub fn new(db: UltrosDb, trigger: Arc<Notify>, status: ArbitrageScanStatusTracker) -> Self {
+        Self {
+            db,
+            trigger,
+            status,
+        }
     }
 
     pub fn start(self, token: CancellationToken) {
         let db = self.db.clone();
         let trigger = self.trigger.clone();
+        let status = self.status.clone();
         tokio::spawn(async move {
             info!("Starting ArbitrageDaemon");
             loop {
                 tokio::select! {
                     _ = trigger.notified() => {
+                        status.mark_queued("Scanner queued; waiting for market updates to settle").await;
                         // Debounce trigger: wait 30s to let batches settle
                         sleep(Duration::from_secs(30)).await;
 
                         // Limit frequency: run at most once every 2 minutes
                         let start_time = tokio::time::Instant::now();
 
-                        if let Err(e) = run_arbitrage_scan(&db).await {
+                        if let Err(e) = run_arbitrage_scan(&db, status.clone()).await {
                             error!(error = ?e, "Arbitrage scan failed");
+                            status.mark_failed(&e).await;
                         }
 
                         let elapsed = start_time.elapsed();
@@ -82,8 +191,11 @@ impl ArbitrageDaemon {
     }
 }
 
-#[instrument(skip(db))]
-async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
+#[instrument(skip(db, status))]
+async fn run_arbitrage_scan(
+    db: &UltrosDb,
+    status: ArbitrageScanStatusTracker,
+) -> Result<(), anyhow::Error> {
     let scan_started = tokio::time::Instant::now();
     info!("Running DC-wide arbitrage scan for all profiles");
 
@@ -91,6 +203,7 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
         .all(db.get_connection())
         .await?;
     let profiles_len = profiles.len();
+    status.mark_scanning(profiles_len).await;
 
     let marketable_item_ids: Vec<i32> = xiv_gen_db::data()
         .items
@@ -99,12 +212,17 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
         .map(|item| item.key_id.0)
         .collect();
 
-    for profile in profiles {
+    for (profile_index, profile) in profiles.into_iter().enumerate() {
         let profile_started = tokio::time::Instant::now();
         let settings = db.get_arbitrage_settings(profile.id).await?;
         let active_dc_id = match profile.active_datacenter_id {
             Some(id) => id,
-            None => continue,
+            None => {
+                status
+                    .mark_profile_progress(profile_index + 1, profiles_len)
+                    .await;
+                continue;
+            }
         };
         let home_world_id = profile.home_world_id;
 
@@ -115,6 +233,9 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
         let dc_world_ids: Vec<i32> = dc_worlds.into_iter().map(|w| w.id).collect();
 
         if dc_world_ids.is_empty() {
+            status
+                .mark_profile_progress(profile_index + 1, profiles_len)
+                .await;
             continue;
         }
 
@@ -138,19 +259,30 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
                 setup_skipped = stats.setup_skipped,
                 "Skipped arbitrage scan because safe sell-target mode requires a home world"
             );
+            status
+                .mark_profile_progress(profile_index + 1, profiles_len)
+                .await;
             continue;
         }
 
         let dest_world_ids = if settings.require_home_world_sell_target {
             match home_world_id {
                 Some(id) => vec![id],
-                None => continue,
+                None => {
+                    status
+                        .mark_profile_progress(profile_index + 1, profiles_len)
+                        .await;
+                    continue;
+                }
             }
         } else {
             dc_world_ids.clone()
         };
 
         if source_world_ids.is_empty() || dest_world_ids.is_empty() {
+            status
+                .mark_profile_progress(profile_index + 1, profiles_len)
+                .await;
             continue;
         }
 
@@ -383,7 +515,11 @@ async fn run_arbitrage_scan(db: &UltrosDb) -> Result<(), anyhow::Error> {
             elapsed_ms = profile_started.elapsed().as_millis(),
             "Saved arbitrage opportunities"
         );
+        status
+            .mark_profile_progress(profile_index + 1, profiles_len)
+            .await;
     }
+    status.mark_complete(profiles_len).await;
 
     info!(
         profiles_scanned = profiles_len,
