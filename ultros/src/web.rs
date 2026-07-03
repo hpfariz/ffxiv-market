@@ -1484,6 +1484,27 @@ pub(crate) async fn start_web(state: WebState) {
                 .put(crate::web::api::profiles::update_arbitrage_settings),
         )
         .route(
+            "/api/v1/profiles/{id}/settings/arbitrage/destinations",
+            get(crate::web::api::profiles::get_arbitrage_destinations)
+                .put(crate::web::api::profiles::update_arbitrage_destinations),
+        )
+        .route(
+            "/api/v1/profiles/{id}/settings/arbitrage/apply-preset",
+            post(crate::web::api::profiles::apply_arbitrage_preset),
+        )
+        .route(
+            "/api/v1/profiles/{id}/settings/arbitrage/preview",
+            post(crate::web::api::profiles::preview_arbitrage_digest),
+        )
+        .route(
+            "/api/v1/profiles/{id}/settings/arbitrage/test",
+            post(crate::web::api::profiles::test_arbitrage_digest),
+        )
+        .route(
+            "/api/v1/profiles/{id}/settings/arbitrage/reset-delivery-state",
+            post(crate::web::api::profiles::reset_arbitrage_delivery_state),
+        )
+        .route(
             "/api/v1/profiles/{id}/settings/crafting",
             get(crate::web::api::profiles::get_crafting_settings)
                 .put(crate::web::api::profiles::update_crafting_settings),
@@ -1501,6 +1522,10 @@ pub(crate) async fn start_web(state: WebState) {
         .route(
             "/api/v1/profiles/{id}/arbitrage/status",
             get(crate::web::api::profiles::get_arbitrage_scan_status),
+        )
+        .route(
+            "/api/v1/profiles/{id}/arbitrage/alert-status",
+            get(crate::web::api::profiles::get_arbitrage_alert_status),
         )
         .route(
             "/api/v1/profiles/{id}/crafting",

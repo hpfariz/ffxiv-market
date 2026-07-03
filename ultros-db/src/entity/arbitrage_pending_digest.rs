@@ -2,7 +2,7 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "arbitrage_digest_state")]
+#[sea_orm(table_name = "arbitrage_pending_digest")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
@@ -12,28 +12,9 @@ pub struct Model {
     pub source_world_id: i32,
     pub dest_world_id: i32,
     pub snapshot_hash: String,
-    pub source_price: i32,
-    pub dest_price: i32,
-    pub quantity_available: i32,
     pub net_profit: i64,
-    pub volatility_flag: String,
-    pub latest_sale_timestamp: Option<DateTime>,
-    pub units_sold_48h: i64,
-    pub units_sold_7d: i64,
-    pub median_sale_price: i32,
-    pub recent_cluster_avg_price: Option<f64>,
-    pub prior_cluster_avg_price: Option<f64>,
-    pub weekly_avg_velocity: f64,
-    pub dest_low_ask_price: i32,
-    pub selected_sell_reference_price: i32,
-    pub source_ask_avg: Option<f64>,
-    pub dest_ask_avg: Option<f64>,
-    pub reference_min_price: Option<i32>,
-    pub reference_avg_price: Option<f64>,
-    pub markdown_pct: Option<f64>,
-    pub execution_status: String,
-    pub delivered_at: DateTime,
-    pub created_at: DateTime,
+    pub section: String,
+    pub queued_at: DateTime,
     pub updated_at: DateTime,
 }
 

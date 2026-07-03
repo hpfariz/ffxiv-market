@@ -1,0 +1,1018 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProfileArbitrageSettings::Table)
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::PresetName)
+                            .string()
+                            .not_null()
+                            .default("BALANCED"),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::DestinationWorldScope)
+                            .string()
+                            .not_null()
+                            .default("HOME_WORLD"),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::SellerWorldIds)
+                            .json()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::WeeklyVelocityThreshold)
+                            .double()
+                            .not_null()
+                            .default(0.0),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::SameDcTravelMinutes)
+                            .integer()
+                            .not_null()
+                            .default(2),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::CrossDcTravelMinutes)
+                            .integer()
+                            .not_null()
+                            .default(8),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::ReferencePriceScope)
+                            .string()
+                            .not_null()
+                            .default("DESTINATION_DC"),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::SellPriceStrategy)
+                            .string()
+                            .not_null()
+                            .default("LOWER_OF_ASK_AND_MEDIAN"),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::MinMarkdownPct)
+                            .double()
+                            .not_null()
+                            .default(0.0),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::DigestFormat)
+                            .string()
+                            .not_null()
+                            .default("CARDS"),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::DigestChangedOnly)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::DigestMaxClean)
+                            .integer()
+                            .not_null()
+                            .default(8),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::DigestMaxReview)
+                            .integer()
+                            .not_null()
+                            .default(4),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::DigestIncludeReview)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::DigestIncludeUniversalisLinks)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::DigestIncludeUltrosLinks)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::TableGroupingStrategy)
+                            .string()
+                            .not_null()
+                            .default("BEST_PLUS_SAME_DC"),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::TableMaxRowsPerItem)
+                            .integer()
+                            .not_null()
+                            .default(2),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::TableIncludeSameDcBest)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::TableShowTheoretical)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::AlertGroupingStrategy)
+                            .string()
+                            .not_null()
+                            .default("BEST_PLUS_SAME_DC"),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::AlertMaxRowsPerItem)
+                            .integer()
+                            .not_null()
+                            .default(2),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::AlertIncludeSameDcBest)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::AlertShowTheoretical)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .add_column(
+                        ColumnDef::new(
+                            ProfileArbitrageSettings::AlertProfitImprovementThresholdGil,
+                        )
+                        .big_integer()
+                        .not_null()
+                        .default(1),
+                    )
+                    .add_column(
+                        ColumnDef::new(
+                            ProfileArbitrageSettings::AlertProfitImprovementThresholdPct,
+                        )
+                        .double()
+                        .not_null()
+                        .default(0.0),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::AlertFrequencyMode)
+                            .string()
+                            .not_null()
+                            .default("DIGEST_INTERVAL"),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::AlertDigestIntervalMinutes)
+                            .integer()
+                            .not_null()
+                            .default(60),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::AlertScheduleCron)
+                            .string()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::AlertSendEmptyDigest)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::AlertImmediateThresholdEnabled)
+                            .boolean()
+                            .not_null()
+                            .default(true),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::AlertImmediateMinNetProfit)
+                            .big_integer()
+                            .not_null()
+                            .default(500_000),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::AlertImmediateMinMarkdownPct)
+                            .double()
+                            .not_null()
+                            .default(0.0),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::AlertImmediateMinVelocity)
+                            .double()
+                            .not_null()
+                            .default(0.0),
+                    )
+                    .add_column(
+                        ColumnDef::new(ProfileArbitrageSettings::AlertImmediateMaxPerHour)
+                            .integer()
+                            .not_null()
+                            .default(3),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ArbitrageOpportunity::Table)
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::DestLowAskPrice)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::SelectedSellReferencePrice)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::SourceAskAvg)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::DestAskAvg)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::ReferenceMinPrice)
+                            .integer()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::ReferenceAvgPrice)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::MarkdownPct)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::ExecutionStatus)
+                            .string()
+                            .not_null()
+                            .default("EXECUTABLE"),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageOpportunity::TravelMinutes)
+                            .big_integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ArbitrageDigestState::Table)
+                    .add_column(
+                        ColumnDef::new(ArbitrageDigestState::DestLowAskPrice)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageDigestState::SelectedSellReferencePrice)
+                            .integer()
+                            .not_null()
+                            .default(0),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageDigestState::SourceAskAvg)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageDigestState::DestAskAvg)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageDigestState::ReferenceMinPrice)
+                            .integer()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageDigestState::ReferenceAvgPrice)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageDigestState::MarkdownPct)
+                            .double()
+                            .null(),
+                    )
+                    .add_column(
+                        ColumnDef::new(ArbitrageDigestState::ExecutionStatus)
+                            .string()
+                            .not_null()
+                            .default("EXECUTABLE"),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        create_arbitrage_destination_table(manager).await?;
+        create_item_alert_state_table(manager).await?;
+        create_schedule_state_table(manager).await?;
+        create_pending_digest_table(manager).await?;
+        create_delivery_attempt_table(manager).await?;
+        create_supporting_indexes(manager).await?;
+
+        let db = manager.get_connection();
+        db.execute_unprepared(
+            r#"
+            UPDATE profile_arbitrage_settings
+               SET preset_name = CASE
+                    WHEN min_net_profit <= 0 AND velocity_threshold <= 0 AND min_profit_total <= 0 THEN 'BALANCED'
+                    ELSE 'CUSTOM'
+               END,
+                   destination_world_scope = CASE
+                    WHEN require_home_world_sell_target THEN 'HOME_WORLD'
+                    ELSE 'ACTIVE_DC'
+               END
+            "#,
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        drop_supporting_indexes(manager).await?;
+
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ArbitrageDeliveryAttempt::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ArbitragePendingDigest::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ArbitrageAlertScheduleState::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ArbitrageItemAlertState::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(ArbitrageNotificationDestination::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ArbitrageDigestState::Table)
+                    .drop_column(ArbitrageDigestState::ExecutionStatus)
+                    .drop_column(ArbitrageDigestState::MarkdownPct)
+                    .drop_column(ArbitrageDigestState::ReferenceAvgPrice)
+                    .drop_column(ArbitrageDigestState::ReferenceMinPrice)
+                    .drop_column(ArbitrageDigestState::DestAskAvg)
+                    .drop_column(ArbitrageDigestState::SourceAskAvg)
+                    .drop_column(ArbitrageDigestState::SelectedSellReferencePrice)
+                    .drop_column(ArbitrageDigestState::DestLowAskPrice)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ArbitrageOpportunity::Table)
+                    .drop_column(ArbitrageOpportunity::TravelMinutes)
+                    .drop_column(ArbitrageOpportunity::ExecutionStatus)
+                    .drop_column(ArbitrageOpportunity::MarkdownPct)
+                    .drop_column(ArbitrageOpportunity::ReferenceAvgPrice)
+                    .drop_column(ArbitrageOpportunity::ReferenceMinPrice)
+                    .drop_column(ArbitrageOpportunity::DestAskAvg)
+                    .drop_column(ArbitrageOpportunity::SourceAskAvg)
+                    .drop_column(ArbitrageOpportunity::SelectedSellReferencePrice)
+                    .drop_column(ArbitrageOpportunity::DestLowAskPrice)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(ProfileArbitrageSettings::Table)
+                    .drop_column(ProfileArbitrageSettings::AlertImmediateMaxPerHour)
+                    .drop_column(ProfileArbitrageSettings::AlertImmediateMinVelocity)
+                    .drop_column(ProfileArbitrageSettings::AlertImmediateMinMarkdownPct)
+                    .drop_column(ProfileArbitrageSettings::AlertImmediateMinNetProfit)
+                    .drop_column(ProfileArbitrageSettings::AlertImmediateThresholdEnabled)
+                    .drop_column(ProfileArbitrageSettings::AlertSendEmptyDigest)
+                    .drop_column(ProfileArbitrageSettings::AlertScheduleCron)
+                    .drop_column(ProfileArbitrageSettings::AlertDigestIntervalMinutes)
+                    .drop_column(ProfileArbitrageSettings::AlertFrequencyMode)
+                    .drop_column(ProfileArbitrageSettings::AlertProfitImprovementThresholdPct)
+                    .drop_column(ProfileArbitrageSettings::AlertProfitImprovementThresholdGil)
+                    .drop_column(ProfileArbitrageSettings::AlertShowTheoretical)
+                    .drop_column(ProfileArbitrageSettings::AlertIncludeSameDcBest)
+                    .drop_column(ProfileArbitrageSettings::AlertMaxRowsPerItem)
+                    .drop_column(ProfileArbitrageSettings::AlertGroupingStrategy)
+                    .drop_column(ProfileArbitrageSettings::TableShowTheoretical)
+                    .drop_column(ProfileArbitrageSettings::TableIncludeSameDcBest)
+                    .drop_column(ProfileArbitrageSettings::TableMaxRowsPerItem)
+                    .drop_column(ProfileArbitrageSettings::TableGroupingStrategy)
+                    .drop_column(ProfileArbitrageSettings::DigestIncludeUltrosLinks)
+                    .drop_column(ProfileArbitrageSettings::DigestIncludeUniversalisLinks)
+                    .drop_column(ProfileArbitrageSettings::DigestIncludeReview)
+                    .drop_column(ProfileArbitrageSettings::DigestMaxReview)
+                    .drop_column(ProfileArbitrageSettings::DigestMaxClean)
+                    .drop_column(ProfileArbitrageSettings::DigestChangedOnly)
+                    .drop_column(ProfileArbitrageSettings::DigestFormat)
+                    .drop_column(ProfileArbitrageSettings::MinMarkdownPct)
+                    .drop_column(ProfileArbitrageSettings::SellPriceStrategy)
+                    .drop_column(ProfileArbitrageSettings::ReferencePriceScope)
+                    .drop_column(ProfileArbitrageSettings::CrossDcTravelMinutes)
+                    .drop_column(ProfileArbitrageSettings::SameDcTravelMinutes)
+                    .drop_column(ProfileArbitrageSettings::WeeklyVelocityThreshold)
+                    .drop_column(ProfileArbitrageSettings::SellerWorldIds)
+                    .drop_column(ProfileArbitrageSettings::DestinationWorldScope)
+                    .drop_column(ProfileArbitrageSettings::PresetName)
+                    .to_owned(),
+            )
+            .await?;
+
+        Ok(())
+    }
+}
+
+async fn create_arbitrage_destination_table(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(ArbitrageNotificationDestination::Table)
+                .if_not_exists()
+                .col(
+                    ColumnDef::new(ArbitrageNotificationDestination::ProfileId)
+                        .integer()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageNotificationDestination::EndpointId)
+                        .integer()
+                        .not_null(),
+                )
+                .primary_key(
+                    Index::create()
+                        .col(ArbitrageNotificationDestination::ProfileId)
+                        .col(ArbitrageNotificationDestination::EndpointId),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .from(
+                            ArbitrageNotificationDestination::Table,
+                            ArbitrageNotificationDestination::ProfileId,
+                        )
+                        .to(PlayerProfile::Table, PlayerProfile::Id),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .from(
+                            ArbitrageNotificationDestination::Table,
+                            ArbitrageNotificationDestination::EndpointId,
+                        )
+                        .to(NotificationEndpoint::Table, NotificationEndpoint::Id),
+                )
+                .to_owned(),
+        )
+        .await
+}
+
+async fn create_item_alert_state_table(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(ArbitrageItemAlertState::Table)
+                .if_not_exists()
+                .col(
+                    ColumnDef::new(ArbitrageItemAlertState::Id)
+                        .integer()
+                        .not_null()
+                        .auto_increment()
+                        .primary_key(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageItemAlertState::ProfileId)
+                        .integer()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageItemAlertState::ItemId)
+                        .integer()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageItemAlertState::Hq)
+                        .boolean()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageItemAlertState::BestAlertedNetProfit)
+                        .big_integer()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageItemAlertState::BestAlertedSnapshotHash)
+                        .text()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageItemAlertState::LastAlertedAt)
+                        .date_time()
+                        .not_null(),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .from(
+                            ArbitrageItemAlertState::Table,
+                            ArbitrageItemAlertState::ProfileId,
+                        )
+                        .to(PlayerProfile::Table, PlayerProfile::Id),
+                )
+                .to_owned(),
+        )
+        .await?;
+
+    manager
+        .create_index(
+            Index::create()
+                .name("idx_arbitrage_item_alert_state_key")
+                .table(ArbitrageItemAlertState::Table)
+                .col(ArbitrageItemAlertState::ProfileId)
+                .col(ArbitrageItemAlertState::ItemId)
+                .col(ArbitrageItemAlertState::Hq)
+                .unique()
+                .to_owned(),
+        )
+        .await
+}
+
+async fn create_schedule_state_table(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(ArbitrageAlertScheduleState::Table)
+                .if_not_exists()
+                .col(
+                    ColumnDef::new(ArbitrageAlertScheduleState::ProfileId)
+                        .integer()
+                        .not_null()
+                        .primary_key(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageAlertScheduleState::LastDigestSentAt)
+                        .date_time()
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageAlertScheduleState::LastImmediateSentAt)
+                        .date_time()
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageAlertScheduleState::ImmediateSentCountWindowStart)
+                        .date_time()
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageAlertScheduleState::ImmediateSentCount)
+                        .integer()
+                        .not_null()
+                        .default(0),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .from(
+                            ArbitrageAlertScheduleState::Table,
+                            ArbitrageAlertScheduleState::ProfileId,
+                        )
+                        .to(PlayerProfile::Table, PlayerProfile::Id),
+                )
+                .to_owned(),
+        )
+        .await
+}
+
+async fn create_pending_digest_table(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(ArbitragePendingDigest::Table)
+                .if_not_exists()
+                .col(
+                    ColumnDef::new(ArbitragePendingDigest::Id)
+                        .integer()
+                        .not_null()
+                        .auto_increment()
+                        .primary_key(),
+                )
+                .col(
+                    ColumnDef::new(ArbitragePendingDigest::ProfileId)
+                        .integer()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitragePendingDigest::ItemId)
+                        .integer()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitragePendingDigest::Hq)
+                        .boolean()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitragePendingDigest::SourceWorldId)
+                        .integer()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitragePendingDigest::DestWorldId)
+                        .integer()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitragePendingDigest::SnapshotHash)
+                        .text()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitragePendingDigest::NetProfit)
+                        .big_integer()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitragePendingDigest::Section)
+                        .string()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitragePendingDigest::QueuedAt)
+                        .date_time()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitragePendingDigest::UpdatedAt)
+                        .date_time()
+                        .not_null(),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .from(
+                            ArbitragePendingDigest::Table,
+                            ArbitragePendingDigest::ProfileId,
+                        )
+                        .to(PlayerProfile::Table, PlayerProfile::Id),
+                )
+                .to_owned(),
+        )
+        .await?;
+
+    manager
+        .create_index(
+            Index::create()
+                .name("idx_arbitrage_pending_digest_key")
+                .table(ArbitragePendingDigest::Table)
+                .col(ArbitragePendingDigest::ProfileId)
+                .col(ArbitragePendingDigest::ItemId)
+                .col(ArbitragePendingDigest::Hq)
+                .col(ArbitragePendingDigest::SourceWorldId)
+                .col(ArbitragePendingDigest::DestWorldId)
+                .unique()
+                .to_owned(),
+        )
+        .await?;
+
+    manager
+        .create_index(
+            Index::create()
+                .name("idx_arbitrage_pending_digest_profile_profit")
+                .table(ArbitragePendingDigest::Table)
+                .col(ArbitragePendingDigest::ProfileId)
+                .col(ArbitragePendingDigest::NetProfit)
+                .to_owned(),
+        )
+        .await
+}
+
+async fn create_delivery_attempt_table(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_table(
+            Table::create()
+                .table(ArbitrageDeliveryAttempt::Table)
+                .if_not_exists()
+                .col(
+                    ColumnDef::new(ArbitrageDeliveryAttempt::Id)
+                        .integer()
+                        .not_null()
+                        .auto_increment()
+                        .primary_key(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageDeliveryAttempt::ProfileId)
+                        .integer()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageDeliveryAttempt::EndpointId)
+                        .integer()
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageDeliveryAttempt::DeliveryKind)
+                        .string()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageDeliveryAttempt::SnapshotBatchHash)
+                        .text()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageDeliveryAttempt::Success)
+                        .boolean()
+                        .not_null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageDeliveryAttempt::ErrorMessage)
+                        .text()
+                        .null(),
+                )
+                .col(
+                    ColumnDef::new(ArbitrageDeliveryAttempt::AttemptedAt)
+                        .date_time()
+                        .not_null(),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .on_delete(ForeignKeyAction::Cascade)
+                        .from(
+                            ArbitrageDeliveryAttempt::Table,
+                            ArbitrageDeliveryAttempt::ProfileId,
+                        )
+                        .to(PlayerProfile::Table, PlayerProfile::Id),
+                )
+                .foreign_key(
+                    ForeignKey::create()
+                        .on_delete(ForeignKeyAction::SetNull)
+                        .from(
+                            ArbitrageDeliveryAttempt::Table,
+                            ArbitrageDeliveryAttempt::EndpointId,
+                        )
+                        .to(NotificationEndpoint::Table, NotificationEndpoint::Id),
+                )
+                .to_owned(),
+        )
+        .await?;
+
+    manager
+        .create_index(
+            Index::create()
+                .name("idx_arbitrage_delivery_attempt_profile_time")
+                .table(ArbitrageDeliveryAttempt::Table)
+                .col(ArbitrageDeliveryAttempt::ProfileId)
+                .col(ArbitrageDeliveryAttempt::AttemptedAt)
+                .to_owned(),
+        )
+        .await
+}
+
+async fn create_supporting_indexes(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    manager
+        .create_index(
+            Index::create()
+                .name("idx_active_listing_world_item_hq_time_price")
+                .table(Alias::new("active_listing"))
+                .col(Alias::new("world_id"))
+                .col(Alias::new("item_id"))
+                .col(Alias::new("hq"))
+                .col(Alias::new("timestamp"))
+                .col(Alias::new("price_per_unit"))
+                .to_owned(),
+        )
+        .await?;
+
+    manager
+        .create_index(
+            Index::create()
+                .name("idx_sale_history_world_item_hq_date_price")
+                .table(Alias::new("sale_history"))
+                .col(Alias::new("world_id"))
+                .col(Alias::new("sold_item_id"))
+                .col(Alias::new("hq"))
+                .col(Alias::new("sold_date"))
+                .col(Alias::new("price_per_item"))
+                .to_owned(),
+        )
+        .await
+}
+
+async fn drop_supporting_indexes(manager: &SchemaManager<'_>) -> Result<(), DbErr> {
+    for (table, index) in [
+        ("sale_history", "idx_sale_history_world_item_hq_date_price"),
+        (
+            "active_listing",
+            "idx_active_listing_world_item_hq_time_price",
+        ),
+    ] {
+        manager
+            .drop_index(
+                Index::drop()
+                    .name(index)
+                    .table(Alias::new(table))
+                    .to_owned(),
+            )
+            .await?;
+    }
+    Ok(())
+}
+
+#[derive(Iden)]
+enum ProfileArbitrageSettings {
+    Table,
+    PresetName,
+    DestinationWorldScope,
+    SellerWorldIds,
+    WeeklyVelocityThreshold,
+    SameDcTravelMinutes,
+    CrossDcTravelMinutes,
+    ReferencePriceScope,
+    SellPriceStrategy,
+    MinMarkdownPct,
+    DigestFormat,
+    DigestChangedOnly,
+    DigestMaxClean,
+    DigestMaxReview,
+    DigestIncludeReview,
+    DigestIncludeUniversalisLinks,
+    DigestIncludeUltrosLinks,
+    TableGroupingStrategy,
+    TableMaxRowsPerItem,
+    TableIncludeSameDcBest,
+    TableShowTheoretical,
+    AlertGroupingStrategy,
+    AlertMaxRowsPerItem,
+    AlertIncludeSameDcBest,
+    AlertShowTheoretical,
+    AlertProfitImprovementThresholdGil,
+    AlertProfitImprovementThresholdPct,
+    AlertFrequencyMode,
+    AlertDigestIntervalMinutes,
+    AlertScheduleCron,
+    AlertSendEmptyDigest,
+    AlertImmediateThresholdEnabled,
+    AlertImmediateMinNetProfit,
+    AlertImmediateMinMarkdownPct,
+    AlertImmediateMinVelocity,
+    AlertImmediateMaxPerHour,
+}
+
+#[derive(Iden)]
+enum ArbitrageOpportunity {
+    Table,
+    DestLowAskPrice,
+    SelectedSellReferencePrice,
+    SourceAskAvg,
+    DestAskAvg,
+    ReferenceMinPrice,
+    ReferenceAvgPrice,
+    MarkdownPct,
+    ExecutionStatus,
+    TravelMinutes,
+}
+
+#[derive(Iden)]
+enum ArbitrageDigestState {
+    Table,
+    DestLowAskPrice,
+    SelectedSellReferencePrice,
+    SourceAskAvg,
+    DestAskAvg,
+    ReferenceMinPrice,
+    ReferenceAvgPrice,
+    MarkdownPct,
+    ExecutionStatus,
+}
+
+#[derive(Iden)]
+enum ArbitrageNotificationDestination {
+    Table,
+    ProfileId,
+    EndpointId,
+}
+
+#[derive(Iden)]
+enum ArbitrageItemAlertState {
+    Table,
+    Id,
+    ProfileId,
+    ItemId,
+    Hq,
+    BestAlertedNetProfit,
+    BestAlertedSnapshotHash,
+    LastAlertedAt,
+}
+
+#[derive(Iden)]
+enum ArbitrageAlertScheduleState {
+    Table,
+    ProfileId,
+    LastDigestSentAt,
+    LastImmediateSentAt,
+    ImmediateSentCountWindowStart,
+    ImmediateSentCount,
+}
+
+#[derive(Iden)]
+enum ArbitragePendingDigest {
+    Table,
+    Id,
+    ProfileId,
+    ItemId,
+    Hq,
+    SourceWorldId,
+    DestWorldId,
+    SnapshotHash,
+    NetProfit,
+    Section,
+    QueuedAt,
+    UpdatedAt,
+}
+
+#[derive(Iden)]
+enum ArbitrageDeliveryAttempt {
+    Table,
+    Id,
+    ProfileId,
+    EndpointId,
+    DeliveryKind,
+    SnapshotBatchHash,
+    Success,
+    ErrorMessage,
+    AttemptedAt,
+}
+
+#[derive(Iden)]
+enum PlayerProfile {
+    Table,
+    Id,
+}
+
+#[derive(Iden)]
+enum NotificationEndpoint {
+    Table,
+    Id,
+}

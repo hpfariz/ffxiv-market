@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use poise::serenity_prelude::{
     self, Color, CreateAllowedMentions, CreateEmbed, CreateMessage, UserId,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, OnceLock};
 use tracing::error;
 use ultros_db::UltrosDb;
@@ -75,6 +75,50 @@ pub(crate) enum EndpointConfig {
     WebPush { subscription_id: i32 },
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeliveryEmbedField {
+    pub name: String,
+    pub value: String,
+    pub inline: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeliveryEmbed {
+    pub title: String,
+    pub description: String,
+    pub color: u32,
+    pub url: Option<String>,
+    pub fields: Vec<DeliveryEmbedField>,
+    pub footer: Option<String>,
+}
+
+impl DeliveryEmbed {
+    fn to_create_embed(&self) -> CreateEmbed {
+        let mut embed = CreateEmbed::new()
+            .color(color_from_u32(self.color))
+            .title(self.title.clone())
+            .description(self.description.clone());
+        if let Some(url) = &self.url {
+            embed = embed.url(url.clone());
+        }
+        for field in &self.fields {
+            embed = embed.field(field.name.clone(), field.value.clone(), field.inline);
+        }
+        if let Some(footer) = &self.footer {
+            embed = embed.footer(serenity_prelude::CreateEmbedFooter::new(footer.clone()));
+        }
+        embed
+    }
+}
+
+fn color_from_u32(color: u32) -> Color {
+    Color::from_rgb(
+        ((color >> 16) & 0xff) as u8,
+        ((color >> 8) & 0xff) as u8,
+        (color & 0xff) as u8,
+    )
+}
+
 /// Parse a notification endpoint row's `(method, config)` pair into a typed [`EndpointConfig`].
 ///
 /// The DB stores `method` as a separate column and `config` as a JSON object missing the
@@ -119,6 +163,52 @@ pub(crate) async fn deliver_to_endpoint(
             let cfg = get_web_push_config()
                 .ok_or_else(|| anyhow!("web push not configured on this deployment"))?;
             send_webpush(subscription_id, title, body, db, cfg).await
+        }
+    }
+}
+
+pub(crate) async fn deliver_embeds_to_endpoint(
+    endpoint: &ultros_db::entity::notification_endpoint::Model,
+    fallback_title: &str,
+    fallback_body: &str,
+    embeds: &[DeliveryEmbed],
+    db: &UltrosDb,
+    ctx: &serenity_prelude::Context,
+) -> Result<()> {
+    let parsed = parse_endpoint_config(&endpoint.method, &endpoint.config)?;
+    match parsed {
+        EndpointConfig::DiscordChannel { channel_id } => {
+            send_to_channel_embeds(channel_id, fallback_body, embeds, ctx).await
+        }
+        EndpointConfig::DiscordDm { user_id } => {
+            send_dm_embeds(user_id, fallback_body, embeds, ctx).await
+        }
+        EndpointConfig::Webhook { url } => send_webhook_embeds(&url, fallback_body, embeds).await,
+        EndpointConfig::WebPush { subscription_id } => {
+            let cfg = get_web_push_config()
+                .ok_or_else(|| anyhow!("web push not configured on this deployment"))?;
+            send_webpush(subscription_id, fallback_title, fallback_body, db, cfg).await
+        }
+    }
+}
+
+pub(crate) async fn deliver_embeds_non_discord_endpoint(
+    endpoint: &ultros_db::entity::notification_endpoint::Model,
+    fallback_title: &str,
+    fallback_body: &str,
+    embeds: &[DeliveryEmbed],
+    db: &UltrosDb,
+) -> Result<()> {
+    let parsed = parse_endpoint_config(&endpoint.method, &endpoint.config)?;
+    match parsed {
+        EndpointConfig::DiscordChannel { .. } | EndpointConfig::DiscordDm { .. } => {
+            Err(anyhow!("Discord endpoints require the bot to be connected"))
+        }
+        EndpointConfig::Webhook { url } => send_webhook_embeds(&url, fallback_body, embeds).await,
+        EndpointConfig::WebPush { subscription_id } => {
+            let cfg = get_web_push_config()
+                .ok_or_else(|| anyhow!("web push not configured on this deployment"))?;
+            send_webpush(subscription_id, fallback_title, fallback_body, db, cfg).await
         }
     }
 }
@@ -205,6 +295,43 @@ async fn send_to_channel(
     Ok(())
 }
 
+async fn send_to_channel_embeds(
+    channel_id: i64,
+    content: &str,
+    embeds: &[DeliveryEmbed],
+    ctx: &serenity_prelude::Context,
+) -> Result<()> {
+    let channel_id = serenity_prelude::ChannelId::new(channel_id as u64);
+    if embeds.is_empty() {
+        channel_id
+            .send_message(
+                ctx,
+                CreateMessage::new()
+                    .content(truncate_discord_content(content))
+                    .allowed_mentions(CreateAllowedMentions::new()),
+            )
+            .await?;
+        return Ok(());
+    }
+
+    for (index, chunk) in embeds.chunks(10).enumerate() {
+        channel_id
+            .send_message(
+                ctx,
+                CreateMessage::new()
+                    .content(if index == 0 {
+                        truncate_discord_content(content)
+                    } else {
+                        String::new()
+                    })
+                    .embeds(chunk.iter().map(DeliveryEmbed::to_create_embed).collect())
+                    .allowed_mentions(CreateAllowedMentions::new()),
+            )
+            .await?;
+    }
+    Ok(())
+}
+
 pub(crate) async fn send_dm(
     user_id: i64,
     title: &str,
@@ -225,6 +352,42 @@ pub(crate) async fn send_dm(
             .allowed_mentions(CreateAllowedMentions::new()),
     )
     .await?;
+    Ok(())
+}
+
+async fn send_dm_embeds(
+    user_id: i64,
+    content: &str,
+    embeds: &[DeliveryEmbed],
+    ctx: &serenity_prelude::Context,
+) -> Result<()> {
+    let user_id = UserId::new(user_id as u64);
+    let dm = user_id.create_dm_channel(ctx).await?;
+    if embeds.is_empty() {
+        dm.send_message(
+            ctx,
+            CreateMessage::new()
+                .content(truncate_discord_content(content))
+                .allowed_mentions(CreateAllowedMentions::new()),
+        )
+        .await?;
+        return Ok(());
+    }
+
+    for (index, chunk) in embeds.chunks(10).enumerate() {
+        dm.send_message(
+            ctx,
+            CreateMessage::new()
+                .content(if index == 0 {
+                    truncate_discord_content(content)
+                } else {
+                    String::new()
+                })
+                .embeds(chunk.iter().map(DeliveryEmbed::to_create_embed).collect())
+                .allowed_mentions(CreateAllowedMentions::new()),
+        )
+        .await?;
+    }
     Ok(())
 }
 
@@ -354,6 +517,69 @@ pub(crate) async fn send_webhook(url: &str, title: &str, body: &str) -> Result<(
         return Err(anyhow!("webhook returned {status}: {body}"));
     }
     Ok(())
+}
+
+pub(crate) async fn send_webhook_embeds(
+    url: &str,
+    content: &str,
+    embeds: &[DeliveryEmbed],
+) -> Result<()> {
+    if embeds.is_empty() {
+        return send_webhook(url, "Arbitrage Digest", content).await;
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+
+    for (index, chunk) in embeds.chunks(10).enumerate() {
+        let embeds = chunk
+            .iter()
+            .map(|embed| {
+                let mut value = serde_json::json!({
+                    "title": embed.title,
+                    "description": embed.description,
+                    "color": embed.color,
+                    "fields": embed.fields.iter().map(|field| serde_json::json!({
+                        "name": field.name,
+                        "value": field.value,
+                        "inline": field.inline,
+                    })).collect::<Vec<_>>(),
+                });
+                if let Some(url) = &embed.url {
+                    value["url"] = serde_json::Value::String(url.clone());
+                }
+                if let Some(footer) = &embed.footer {
+                    value["footer"] = serde_json::json!({ "text": footer });
+                }
+                value
+            })
+            .collect::<Vec<_>>();
+
+        let payload = serde_json::json!({
+            "content": if index == 0 { truncate_discord_content(content) } else { String::new() },
+            "embeds": embeds,
+            "allowed_mentions": { "parse": [] },
+        });
+        let resp = client.post(url).json(&payload).send().await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(anyhow!("webhook returned {status}: {body}"));
+        }
+    }
+    Ok(())
+}
+
+fn truncate_discord_content(content: &str) -> String {
+    const MAX_CONTENT_LEN: usize = 1900;
+    if content.chars().count() <= MAX_CONTENT_LEN {
+        return content.to_string();
+    }
+
+    let mut truncated = content.chars().take(MAX_CONTENT_LEN).collect::<String>();
+    truncated.push_str("\n...");
+    truncated
 }
 
 #[cfg(test)]

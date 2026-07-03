@@ -13,6 +13,7 @@ use leptos::reactive::wrappers::write::IntoSignalSetter;
 use leptos::task::spawn_local;
 use serde_json::json;
 use thousands::Separable;
+use ultros_api_types::alert::{Endpoint, EndpointMethod};
 use ultros_api_types::world_helper::AnySelector;
 #[cfg(feature = "hydrate")]
 use wasm_bindgen::JsCast;
@@ -45,6 +46,15 @@ fn SettingHelpLabel(label: &'static str, tooltip: &'static str) -> impl IntoView
                 </span>
             </span>
         </div>
+    }
+}
+
+fn endpoint_method_label(method: &EndpointMethod) -> &'static str {
+    match method {
+        EndpointMethod::DiscordDm { .. } => "Discord DM",
+        EndpointMethod::DiscordChannel { .. } => "Discord channel",
+        EndpointMethod::Webhook { .. } => "Discord webhook",
+        EndpointMethod::WebPush { .. } => "Browser push",
     }
 }
 
@@ -82,14 +92,13 @@ pub fn MarketDashboard() -> impl IntoView {
                         set_active_profile(Some(list[0].clone()));
                     }
                 }
+                Err(crate::error::AppError::ApiError(
+                    ultros_api_types::result::ApiError::NotAuthenticated,
+                )) => {
+                    set_is_authenticated(false);
+                }
                 Err(e) => {
                     log::error!("Error loading profiles: {e:?}");
-                    if let crate::error::AppError::ApiError(
-                        ultros_api_types::result::ApiError::NotAuthenticated,
-                    ) = e
-                    {
-                        set_is_authenticated(false);
-                    }
                 }
             }
         });
@@ -117,7 +126,7 @@ pub fn MarketDashboard() -> impl IntoView {
     });
 
     // Eorzea Clock Signal
-    let (eorzea_time_str, set_eorzea_time_str) = signal("00:00".to_string());
+    let (eorzea_time_str, _set_eorzea_time_str) = signal("00:00".to_string());
 
     // Tick Eorzea clock
     #[cfg(feature = "hydrate")]
@@ -129,7 +138,7 @@ pub fn MarketDashboard() -> impl IntoView {
                 let total_minutes = (eorzea_seconds / 60.0) as u32;
                 let hour = (total_minutes / 60) % 24;
                 let minute = total_minutes % 60;
-                set_eorzea_time_str(format!("{:02}:{:02} ET", hour, minute));
+                _set_eorzea_time_str(format!("{:02}:{:02} ET", hour, minute));
             }));
         on_cleanup(move || {
             drop(interval);
@@ -137,8 +146,8 @@ pub fn MarketDashboard() -> impl IntoView {
     }
 
     // Health state from SSE
-    let (health_status, set_health_status) = signal("Connecting...".to_string());
-    let (health_color, set_health_color) = signal("text-amber-400 bg-amber-400/10".to_string());
+    let (health_status, _set_health_status) = signal("Connecting...".to_string());
+    let (health_color, _set_health_color) = signal("text-amber-400 bg-amber-400/10".to_string());
 
     // Subscribe to SSE
     #[cfg(feature = "hydrate")]
@@ -152,24 +161,24 @@ pub fn MarketDashboard() -> impl IntoView {
                             && let Ok(event_type) = serde_json::from_str::<serde_json::Value>(&data)
                         {
                             if event_type.as_str() == Some("Healthy") {
-                                set_health_status("Healthy".to_string());
-                                set_health_color(
+                                _set_health_status("Healthy".to_string());
+                                _set_health_color(
                                     "text-emerald-400 bg-emerald-400/10 border-emerald-400/20"
                                         .to_string(),
                                 );
                             } else if let Some(lag) = event_type.get("Lagging") {
                                 if let Some(sec) = lag.get("lag_seconds").and_then(|v| v.as_i64()) {
-                                    set_health_status(format!("Lagging ({}m)", sec / 60));
+                                    _set_health_status(format!("Lagging ({}m)", sec / 60));
                                 } else {
-                                    set_health_status("Lagging".to_string());
+                                    _set_health_status("Lagging".to_string());
                                 }
-                                set_health_color(
+                                _set_health_color(
                                     "text-amber-400 bg-amber-400/10 border-amber-400/20"
                                         .to_string(),
                                 );
                             } else if event_type.as_str() == Some("Disconnected") {
-                                set_health_status("Disconnected".to_string());
-                                set_health_color(
+                                _set_health_status("Disconnected".to_string());
+                                _set_health_color(
                                     "text-rose-400 bg-rose-400/10 border-rose-400/20 animate-pulse"
                                         .to_string(),
                                 );
@@ -988,20 +997,20 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                 <table class="min-w-full divide-y divide-white/10 text-sm text-left">
                     <thead>
                         <tr class="text-gray-400 font-semibold">
-                            <th class="py-3 px-4">"Item"</th>
-                            <th class="py-3 px-4">"Buy From"</th>
-                            <th class="py-3 px-4">"Sell On"</th>
-                            <th class="py-3 px-4">"Buy Price"</th>
-                            <th class="py-3 px-4">"Competing Price"</th>
-                            <th class="py-3 px-4">"Qty"</th>
-                            <th class="py-3 px-4">"Total Cost"</th>
-                            <th class="py-3 px-4">"Gross Profit"</th>
-                            <th class="py-3 px-4">"Net Profit"</th>
-                            <th class="py-3 px-4">"Velocity"</th>
-                            <th class="py-3 px-4">"Travel"</th>
-                            <th class="py-3 px-4">"Risk"</th>
-                            <th class="py-3 px-4">"Age"</th>
-                            <th class="py-3 px-4">"Flags"</th>
+                            <th class="py-3 px-4" title="Item name, item ID, and quality for the flip candidate.">"Item"</th>
+                            <th class="py-3 px-4" title="World where the buy-side listing was found.">"Buy From"</th>
+                            <th class="py-3 px-4" title="Destination world where the item is expected to sell.">"Sell On"</th>
+                            <th class="py-3 px-4" title="Lowest source ask price per unit.">"Buy Price"</th>
+                            <th class="py-3 px-4" title="Destination sell-side reference price, using the safer value from current asks and recent sale history.">"Competing Price"</th>
+                            <th class="py-3 px-4" title="Quantity available at the source listing price.">"Qty"</th>
+                            <th class="py-3 px-4" title="Buy price multiplied by quantity.">"Total Cost"</th>
+                            <th class="py-3 px-4" title="Estimated profit before travel or time deduction.">"Gross Profit"</th>
+                            <th class="py-3 px-4" title="Estimated profit after travel or time deduction.">"Net Profit"</th>
+                            <th class="py-3 px-4" title="Current velocity and weekly average velocity. Current velocity is recent sold units divided by active destination listings; weekly average is sales over the last 7 days divided by 7.">"Velocity"</th>
+                            <th class="py-3 px-4" title="Estimated travel friction tier for buying and selling this flip.">"Travel"</th>
+                            <th class="py-3 px-4" title="Volatility review status based on recent sale regime changes and ask confirmation.">"Risk"</th>
+                            <th class="py-3 px-4" title="Age of the source listing used for the flip.">"Age"</th>
+                            <th class="py-3 px-4" title="Additional execution flags, such as over-budget warnings.">"Flags"</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-white/5">
@@ -1038,7 +1047,9 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                                     } else {
                                         0
                                     };
-                                    let competing_price = if opp.quantity_available > 0 {
+                                    let competing_price = if opp.selected_sell_reference_price > 0 {
+                                        opp.selected_sell_reference_price as i64
+                                    } else if opp.quantity_available > 0 {
                                         buy_price + (opp.gross_profit / opp.quantity_available as i64)
                                     } else {
                                         0
@@ -1102,6 +1113,26 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                                         opp.units_sold_48h,
                                         opp.units_sold_7d
                                     );
+                                    let price_title = format!(
+                                        "Destination low ask: {} Gil. Selected sell reference: {} Gil. Median sale: {} Gil. Reference min: {}. Reference avg: {}. Markdown: {}.",
+                                        opp.dest_low_ask_price.separate_with_commas(),
+                                        opp.selected_sell_reference_price.separate_with_commas(),
+                                        opp.median_sale_price.separate_with_commas(),
+                                        opp.reference_min_price
+                                            .map(|price| format!("{} Gil", price.separate_with_commas()))
+                                            .unwrap_or_else(|| "n/a".to_string()),
+                                        opp.reference_avg_price
+                                            .map(|price| format!("{price:.0} Gil"))
+                                            .unwrap_or_else(|| "n/a".to_string()),
+                                        opp.markdown_pct
+                                            .map(|pct| format!("{pct:.1}%"))
+                                            .unwrap_or_else(|| "n/a".to_string())
+                                    );
+                                    let travel_title = format!(
+                                        "{}; estimated travel {} minutes",
+                                        opp.execution_status,
+                                        opp.travel_minutes
+                                    );
                                     view! {
                                         <tr class=if is_volatile { "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] transition-colors" } else { "hover:bg-white/5 transition-colors" }>
                                             <td class="py-3 px-4 font-semibold text-gray-200">
@@ -1127,7 +1158,7 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                                                 <WorldName id=AnySelector::World(opp.dest_world_id) />
                                             </td>
                                             <td class="py-3 px-4 font-mono text-gray-300">{format!("{} Gil", buy_price.separate_with_commas())}</td>
-                                            <td class="py-3 px-4 font-mono text-gray-300">{format!("{} Gil", competing_price.separate_with_commas())}</td>
+                                            <td class="py-3 px-4 font-mono text-gray-300" title=price_title>{format!("{} Gil", competing_price.separate_with_commas())}</td>
                                             <td class="py-3 px-4">{opp.quantity_available}</td>
                                             <td class="py-3 px-4 text-gray-300">{format!("{} Gil", opp.total_cost.separate_with_commas())}</td>
                                             <td class="py-3 px-4 text-gray-300">{opp.gross_profit.separate_with_commas()}</td>
@@ -1135,7 +1166,7 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                                             <td class="py-3 px-4 font-mono" title=velocity_title>
                                                 {format!("{:.2} / {:.1}/day", opp.velocity_score, opp.weekly_avg_velocity)}
                                             </td>
-                                            <td class="py-3 px-4">
+                                            <td class="py-3 px-4" title=travel_title>
                                                 <span class=format!("px-2 py-0.5 rounded text-[10px] font-bold border {}", travel_class)>
                                                     {travel_label}
                                                 </span>
@@ -1369,11 +1400,11 @@ fn GatheringView(profile_id: Option<i32>) -> impl IntoView {
                     <table class="min-w-full divide-y divide-white/10 text-xs text-left">
                         <thead>
                             <tr class="text-gray-400 font-semibold">
-                                <th class="py-2 px-3">"Item Name"</th>
-                                <th class="py-2 px-3">"Class"</th>
-                                <th class="py-2 px-3">"Level"</th>
-                                <th class="py-2 px-3">"Price"</th>
-                                <th class="py-2 px-3">"Node Score"</th>
+                                <th class="py-2 px-3" title="Gatherable item returned by the optimizer.">"Item Name"</th>
+                                <th class="py-2 px-3" title="Gathering class that can collect the item.">"Class"</th>
+                                <th class="py-2 px-3" title="Recommended or required gathering level for the item.">"Level"</th>
+                                <th class="py-2 px-3" title="Current market price used by the optimizer.">"Price"</th>
+                                <th class="py-2 px-3" title="Optimizer score combining market value and node availability.">"Node Score"</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
@@ -1415,12 +1446,12 @@ fn GatheringView(profile_id: Option<i32>) -> impl IntoView {
                     <table class="min-w-full divide-y divide-white/10 text-xs text-left">
                         <thead>
                             <tr class="text-gray-400 font-semibold">
-                                <th class="py-2 px-3">"Item Name"</th>
-                                <th class="py-2 px-3">"Class"</th>
-                                <th class="py-2 px-3">"Level"</th>
-                                <th class="py-2 px-3">"Next Spawn (Local)"</th>
-                                <th class="py-2 px-3">"Window"</th>
-                                <th class="py-2 px-3">"Node Score"</th>
+                                <th class="py-2 px-3" title="Timed-node item returned by the optimizer.">"Item Name"</th>
+                                <th class="py-2 px-3" title="Gathering class that can collect the timed item.">"Class"</th>
+                                <th class="py-2 px-3" title="Recommended or required gathering level for the timed item.">"Level"</th>
+                                <th class="py-2 px-3" title="Next local-time spawn window for the timed node.">"Next Spawn (Local)"</th>
+                                <th class="py-2 px-3" title="Duration or time range when the node is available.">"Window"</th>
+                                <th class="py-2 px-3" title="Optimizer score combining market value, availability, and timing.">"Node Score"</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-white/5">
@@ -1478,6 +1509,52 @@ fn SettingsView(
     let (volatility_action, set_volatility_action) = signal("DEMOTE_TO_REVIEW".to_string());
     let (require_ask_confirmation, set_require_ask_confirmation) = signal(true);
     let (max_ask_vs_sale_gap_percent, set_max_ask_vs_sale_gap_percent) = signal(15.0f64);
+    let (destination_scope, set_destination_scope) = signal("HOME_WORLD".to_string());
+    let (weekly_velocity_threshold, set_weekly_velocity_threshold) = signal(0.0f64);
+    let (same_dc_travel_minutes, set_same_dc_travel_minutes) = signal(2i32);
+    let (cross_dc_travel_minutes, set_cross_dc_travel_minutes) = signal(8i32);
+    let (reference_price_scope, set_reference_price_scope) = signal("DESTINATION_DC".to_string());
+    let (sell_price_strategy, set_sell_price_strategy) =
+        signal("LOWER_OF_ASK_AND_MEDIAN".to_string());
+    let (min_markdown_pct, set_min_markdown_pct) = signal(0.0f64);
+    let (digest_changed_only, set_digest_changed_only) = signal(true);
+    let (digest_max_clean, set_digest_max_clean) = signal(8i32);
+    let (digest_max_review, set_digest_max_review) = signal(4i32);
+    let (digest_include_review, set_digest_include_review) = signal(true);
+    let (digest_include_universalis_links, set_digest_include_universalis_links) = signal(true);
+    let (digest_include_ultros_links, set_digest_include_ultros_links) = signal(true);
+    let (table_grouping_strategy, set_table_grouping_strategy) =
+        signal("BEST_PLUS_SAME_DC".to_string());
+    let (table_max_rows_per_item, set_table_max_rows_per_item) = signal(2i32);
+    let (table_include_same_dc_best, set_table_include_same_dc_best) = signal(true);
+    let (table_show_theoretical, set_table_show_theoretical) = signal(false);
+    let (alert_grouping_strategy, set_alert_grouping_strategy) =
+        signal("BEST_PLUS_SAME_DC".to_string());
+    let (alert_max_rows_per_item, set_alert_max_rows_per_item) = signal(2i32);
+    let (alert_include_same_dc_best, set_alert_include_same_dc_best) = signal(true);
+    let (alert_show_theoretical, set_alert_show_theoretical) = signal(false);
+    let (alert_profit_improvement_threshold_gil, set_alert_profit_improvement_threshold_gil) =
+        signal(1i64);
+    let (alert_profit_improvement_threshold_pct, set_alert_profit_improvement_threshold_pct) =
+        signal(0.0f64);
+    let (alert_frequency_mode, set_alert_frequency_mode) = signal("DIGEST_INTERVAL".to_string());
+    let (alert_digest_interval_minutes, set_alert_digest_interval_minutes) = signal(60i32);
+    let (alert_schedule_cron, set_alert_schedule_cron) = signal("".to_string());
+    let (alert_send_empty_digest, set_alert_send_empty_digest) = signal(false);
+    let (alert_immediate_threshold_enabled, set_alert_immediate_threshold_enabled) = signal(true);
+    let (alert_immediate_min_net_profit, set_alert_immediate_min_net_profit) = signal(500_000i64);
+    let (alert_immediate_min_markdown_pct, set_alert_immediate_min_markdown_pct) = signal(0.0f64);
+    let (alert_immediate_min_velocity, set_alert_immediate_min_velocity) = signal(0.0f64);
+    let (alert_immediate_max_per_hour, set_alert_immediate_max_per_hour) = signal(3i32);
+    let (arbitrage_endpoints, set_arbitrage_endpoints) = signal(Vec::<Endpoint>::new());
+    let (selected_arbitrage_endpoint_ids, set_selected_arbitrage_endpoint_ids) =
+        signal(Vec::<i32>::new());
+    let (seller_world_ids_text, set_seller_world_ids_text) = signal("".to_string());
+    let (arbitrage_alert_status, set_arbitrage_alert_status) =
+        signal(None::<ArbitrageAlertStatusResponse>);
+    let (arbitrage_preview, set_arbitrage_preview) = signal(None::<ArbitrageDigestPreview>);
+    let (arbitrage_test_result, set_arbitrage_test_result) =
+        signal(None::<ArbitrageTestSendResponse>);
 
     let profile_for_effect = profile.clone();
     Effect::new(move |_| {
@@ -1496,6 +1573,62 @@ fn SettingsView(
                     set_volatility_action(settings.volatility_action);
                     set_require_ask_confirmation(settings.require_ask_confirmation);
                     set_max_ask_vs_sale_gap_percent(settings.max_ask_vs_sale_gap_percent);
+                    set_destination_scope(settings.destination_world_scope);
+                    set_weekly_velocity_threshold(settings.weekly_velocity_threshold);
+                    set_same_dc_travel_minutes(settings.same_dc_travel_minutes);
+                    set_cross_dc_travel_minutes(settings.cross_dc_travel_minutes);
+                    set_reference_price_scope(settings.reference_price_scope);
+                    set_sell_price_strategy(settings.sell_price_strategy);
+                    set_min_markdown_pct(settings.min_markdown_pct);
+                    set_digest_changed_only(settings.digest_changed_only);
+                    set_digest_max_clean(settings.digest_max_clean);
+                    set_digest_max_review(settings.digest_max_review);
+                    set_digest_include_review(settings.digest_include_review);
+                    set_digest_include_universalis_links(settings.digest_include_universalis_links);
+                    set_digest_include_ultros_links(settings.digest_include_ultros_links);
+                    set_table_grouping_strategy(settings.table_grouping_strategy);
+                    set_table_max_rows_per_item(settings.table_max_rows_per_item);
+                    set_table_include_same_dc_best(settings.table_include_same_dc_best);
+                    set_table_show_theoretical(settings.table_show_theoretical);
+                    set_alert_grouping_strategy(settings.alert_grouping_strategy);
+                    set_alert_max_rows_per_item(settings.alert_max_rows_per_item);
+                    set_alert_include_same_dc_best(settings.alert_include_same_dc_best);
+                    set_alert_show_theoretical(settings.alert_show_theoretical);
+                    set_alert_profit_improvement_threshold_gil(
+                        settings.alert_profit_improvement_threshold_gil,
+                    );
+                    set_alert_profit_improvement_threshold_pct(
+                        settings.alert_profit_improvement_threshold_pct,
+                    );
+                    set_alert_frequency_mode(settings.alert_frequency_mode);
+                    set_alert_digest_interval_minutes(settings.alert_digest_interval_minutes);
+                    set_alert_schedule_cron(settings.alert_schedule_cron.unwrap_or_default());
+                    set_alert_send_empty_digest(settings.alert_send_empty_digest);
+                    set_alert_immediate_threshold_enabled(
+                        settings.alert_immediate_threshold_enabled,
+                    );
+                    set_alert_immediate_min_net_profit(settings.alert_immediate_min_net_profit);
+                    set_alert_immediate_min_markdown_pct(settings.alert_immediate_min_markdown_pct);
+                    set_alert_immediate_min_velocity(settings.alert_immediate_min_velocity);
+                    set_alert_immediate_max_per_hour(settings.alert_immediate_max_per_hour);
+                    let seller_ids = settings
+                        .seller_world_ids
+                        .and_then(|value| serde_json::from_value::<Vec<i32>>(value).ok())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|id| id.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    set_seller_world_ids_text(seller_ids);
+                }
+                if let Ok(endpoints) = list_endpoints().await {
+                    set_arbitrage_endpoints(endpoints);
+                }
+                if let Ok(endpoint_ids) = get_arbitrage_destination_endpoint_ids(pid).await {
+                    set_selected_arbitrage_endpoint_ids(endpoint_ids);
+                }
+                if let Ok(status) = get_arbitrage_alert_status_api(pid).await {
+                    set_arbitrage_alert_status(Some(status));
                 }
             });
         }
@@ -1528,6 +1661,43 @@ fn SettingsView(
             let vol_action = volatility_action();
             let require_ask = require_ask_confirmation();
             let ask_gap = max_ask_vs_sale_gap_percent();
+            let destination = destination_scope();
+            let weekly_vel = weekly_velocity_threshold();
+            let same_dc_minutes = same_dc_travel_minutes();
+            let cross_dc_minutes = cross_dc_travel_minutes();
+            let ref_scope = reference_price_scope();
+            let sell_strategy = sell_price_strategy();
+            let min_markdown = min_markdown_pct();
+            let digest_changed = digest_changed_only();
+            let max_clean = digest_max_clean();
+            let max_review = digest_max_review();
+            let include_review = digest_include_review();
+            let include_universalis = digest_include_universalis_links();
+            let include_ultros = digest_include_ultros_links();
+            let table_grouping = table_grouping_strategy();
+            let table_max_rows = table_max_rows_per_item();
+            let table_same_dc = table_include_same_dc_best();
+            let table_theoretical = table_show_theoretical();
+            let alert_grouping = alert_grouping_strategy();
+            let alert_max_rows = alert_max_rows_per_item();
+            let alert_same_dc = alert_include_same_dc_best();
+            let alert_theoretical = alert_show_theoretical();
+            let improvement_gil = alert_profit_improvement_threshold_gil();
+            let improvement_pct = alert_profit_improvement_threshold_pct();
+            let frequency_mode = alert_frequency_mode();
+            let interval_minutes = alert_digest_interval_minutes();
+            let schedule_cron = alert_schedule_cron();
+            let send_empty = alert_send_empty_digest();
+            let immediate_enabled = alert_immediate_threshold_enabled();
+            let immediate_profit = alert_immediate_min_net_profit();
+            let immediate_markdown = alert_immediate_min_markdown_pct();
+            let immediate_velocity = alert_immediate_min_velocity();
+            let immediate_max_hour = alert_immediate_max_per_hour();
+            let endpoint_ids = selected_arbitrage_endpoint_ids();
+            let seller_ids = seller_world_ids_text()
+                .split(',')
+                .filter_map(|part| part.trim().parse::<i32>().ok())
+                .collect::<Vec<_>>();
 
             spawn_local(async move {
                 let _ = update_arbitrage_settings(
@@ -1550,10 +1720,136 @@ fn SettingsView(
                         "volatility_action": vol_action,
                         "require_ask_confirmation": require_ask,
                         "max_ask_vs_sale_gap_percent": ask_gap,
+                        "preset_name": "CUSTOM",
+                        "destination_world_scope": destination,
+                        "seller_world_ids": seller_ids,
+                        "weekly_velocity_threshold": weekly_vel,
+                        "same_dc_travel_minutes": same_dc_minutes,
+                        "cross_dc_travel_minutes": cross_dc_minutes,
+                        "reference_price_scope": ref_scope,
+                        "sell_price_strategy": sell_strategy,
+                        "min_markdown_pct": min_markdown,
+                        "digest_format": "CARDS",
+                        "digest_changed_only": digest_changed,
+                        "digest_max_clean": max_clean,
+                        "digest_max_review": max_review,
+                        "digest_include_review": include_review,
+                        "digest_include_universalis_links": include_universalis,
+                        "digest_include_ultros_links": include_ultros,
+                        "table_grouping_strategy": table_grouping,
+                        "table_max_rows_per_item": table_max_rows,
+                        "table_include_same_dc_best": table_same_dc,
+                        "table_show_theoretical": table_theoretical,
+                        "alert_grouping_strategy": alert_grouping,
+                        "alert_max_rows_per_item": alert_max_rows,
+                        "alert_include_same_dc_best": alert_same_dc,
+                        "alert_show_theoretical": alert_theoretical,
+                        "alert_profit_improvement_threshold_gil": improvement_gil,
+                        "alert_profit_improvement_threshold_pct": improvement_pct,
+                        "alert_frequency_mode": frequency_mode,
+                        "alert_digest_interval_minutes": interval_minutes,
+                        "alert_schedule_cron": if schedule_cron.trim().is_empty() { serde_json::Value::Null } else { serde_json::Value::String(schedule_cron) },
+                        "alert_send_empty_digest": send_empty,
+                        "alert_immediate_threshold_enabled": immediate_enabled,
+                        "alert_immediate_min_net_profit": immediate_profit,
+                        "alert_immediate_min_markdown_pct": immediate_markdown,
+                        "alert_immediate_min_velocity": immediate_velocity,
+                        "alert_immediate_max_per_hour": immediate_max_hour,
                     }),
                 )
                 .await;
+                let _ = update_arbitrage_destination_endpoint_ids(pid, endpoint_ids).await;
                 reload_profiles();
+            });
+        }
+    };
+
+    let toggle_arbitrage_endpoint = move |endpoint_id: i32| {
+        set_selected_arbitrage_endpoint_ids.update(move |ids| {
+            if let Some(index) = ids.iter().position(|id| *id == endpoint_id) {
+                ids.remove(index);
+            } else {
+                ids.push(endpoint_id);
+            }
+        });
+    };
+
+    let profile_for_reset = profile.clone();
+    let reset_alert_memory = move |_| {
+        if let Some(p) = &profile_for_reset {
+            let pid = p.id;
+            spawn_local(async move {
+                let _ = reset_arbitrage_delivery_state(pid).await;
+            });
+        }
+    };
+
+    let profile_for_preset = profile.clone();
+    let apply_preset = std::rc::Rc::new(move |preset_name: &'static str| {
+        if let Some(p) = &profile_for_preset {
+            let pid = p.id;
+            spawn_local(async move {
+                if let Ok(settings) = apply_arbitrage_preset_api(pid, preset_name).await {
+                    set_min_profit(settings.min_net_profit);
+                    set_vel_thresh(settings.velocity_threshold);
+                    set_travel_rate(settings.travel_cost_rate_per_min);
+                    set_min_profit_t(settings.min_profit_total);
+                    set_require_home_sell(settings.require_home_world_sell_target);
+                    set_source_scope(settings.source_world_scope);
+                    set_destination_scope(settings.destination_world_scope);
+                    set_weekly_velocity_threshold(settings.weekly_velocity_threshold);
+                    set_same_dc_travel_minutes(settings.same_dc_travel_minutes);
+                    set_cross_dc_travel_minutes(settings.cross_dc_travel_minutes);
+                    set_reference_price_scope(settings.reference_price_scope);
+                    set_sell_price_strategy(settings.sell_price_strategy);
+                    set_min_markdown_pct(settings.min_markdown_pct);
+                    set_digest_max_clean(settings.digest_max_clean);
+                    set_digest_max_review(settings.digest_max_review);
+                    set_alert_digest_interval_minutes(settings.alert_digest_interval_minutes);
+                    set_alert_immediate_min_net_profit(settings.alert_immediate_min_net_profit);
+                    set_alert_immediate_min_markdown_pct(settings.alert_immediate_min_markdown_pct);
+                    set_alert_immediate_min_velocity(settings.alert_immediate_min_velocity);
+                    set_alert_immediate_max_per_hour(settings.alert_immediate_max_per_hour);
+                }
+            });
+        }
+    });
+    let apply_conservative = {
+        let apply_preset = apply_preset.clone();
+        move |_| apply_preset("CONSERVATIVE")
+    };
+    let apply_balanced = {
+        let apply_preset = apply_preset.clone();
+        move |_| apply_preset("BALANCED")
+    };
+    let apply_aggressive = {
+        let apply_preset = apply_preset.clone();
+        move |_| apply_preset("AGGRESSIVE")
+    };
+
+    let profile_for_preview = profile.clone();
+    let preview_digest = move |_| {
+        if let Some(p) = &profile_for_preview {
+            let pid = p.id;
+            spawn_local(async move {
+                if let Ok(preview) = preview_arbitrage_digest_api(pid).await {
+                    set_arbitrage_preview(Some(preview));
+                }
+            });
+        }
+    };
+
+    let profile_for_test = profile.clone();
+    let send_test_digest = move |_| {
+        if let Some(p) = &profile_for_test {
+            let pid = p.id;
+            spawn_local(async move {
+                if let Ok(result) = test_arbitrage_digest_api(pid).await {
+                    set_arbitrage_test_result(Some(result));
+                }
+                if let Ok(status) = get_arbitrage_alert_status_api(pid).await {
+                    set_arbitrage_alert_status(Some(status));
+                }
             });
         }
     };
@@ -1615,8 +1911,113 @@ fn SettingsView(
                 <h3 class="text-lg font-bold text-gray-100">"Arbitrage Gates & Alerts Settings"</h3>
 
                 <div class="space-y-4 text-sm">
+                    <div class="rounded-xl border border-white/10 bg-zinc-950/30 p-4 space-y-4">
+                        <div>
+                            <SettingHelpLabel
+                                label="Recommended Presets"
+                                tooltip="Applies a complete recommended configuration. Any later manual edit marks the profile as CUSTOM."
+                            />
+                            <div class="flex flex-wrap gap-2">
+                                <button class="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-gray-300 hover:border-emerald-400/40 hover:bg-emerald-400/10" on:click=apply_conservative>"Conservative"</button>
+                                <button class="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-gray-300 hover:border-violet-400/40 hover:bg-violet-400/10" on:click=apply_balanced>"Balanced"</button>
+                                <button class="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-gray-300 hover:border-amber-400/40 hover:bg-amber-400/10" on:click=apply_aggressive>"Aggressive"</button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-gray-400">
+                            {move || arbitrage_alert_status().map(|status| view! {
+                                <div class="rounded-lg border border-white/10 bg-black/20 p-3">
+                                    <div class="font-semibold text-gray-300">"Pending Digest"</div>
+                                    <div>{format!("{} queued rows", status.pending_digest_count)}</div>
+                                </div>
+                                <div class="rounded-lg border border-white/10 bg-black/20 p-3">
+                                    <div class="font-semibold text-gray-300">"Immediate Window"</div>
+                                    <div>{format!("{} sent", status.immediate_sent_count)}</div>
+                                </div>
+                                <div class="rounded-lg border border-white/10 bg-black/20 p-3">
+                                    <div class="font-semibold text-gray-300">"Next Digest"</div>
+                                    <div>{status.next_digest_hint.unwrap_or_else(|| "n/a".to_string())}</div>
+                                </div>
+                            })}
+                        </div>
+
+                        <div class="flex flex-wrap gap-2">
+                            <button class="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-gray-300 hover:border-sky-400/40 hover:bg-sky-400/10" on:click=preview_digest>"Preview Digest"</button>
+                            <button class="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-gray-300 hover:border-emerald-400/40 hover:bg-emerald-400/10" on:click=send_test_digest>"Send Test"</button>
+                        </div>
+
+                        {move || arbitrage_test_result().map(|result| view! {
+                            <div class=if result.delivered { "rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-3 text-xs text-emerald-200" } else { "rounded-lg border border-rose-400/20 bg-rose-400/10 p-3 text-xs text-rose-200" }>
+                                {format!("Test attempted {} endpoint(s), {} failed.", result.attempted, result.failed)}
+                            </div>
+                        })}
+
+                        {move || arbitrage_preview().map(|preview| view! {
+                            <div class="rounded-lg border border-white/10 bg-black/20 p-3 text-xs text-gray-300 space-y-2">
+                                <div class="font-semibold text-gray-200">{preview.title}</div>
+                                <div>{preview.body}</div>
+                                <div class="space-y-1">
+                                    {preview.embeds.into_iter().take(5).map(|embed| view! {
+                                        <div class="rounded border border-white/10 px-2 py-1">
+                                            <div class="font-semibold">{embed.title}</div>
+                                            <div class="text-gray-500">{embed.description}</div>
+                                        </div>
+                                    }).collect::<Vec<_>>()}
+                                </div>
+                            </div>
+                        })}
+                    </div>
+
                     <div class="rounded-xl border border-white/10 bg-zinc-950/30 p-4">
                         <EndpointsPanel />
+                    </div>
+
+                    <div class="rounded-xl border border-white/10 bg-zinc-950/30 p-4 space-y-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <SettingHelpLabel
+                                    label="Arbitrage Alert Destinations"
+                                    tooltip="Choose which existing alert endpoints receive arbitrage digests and immediate alerts. If none are selected, all endpoints are used as a fallback."
+                                />
+                                <p class="text-xs text-gray-500">"Create or edit endpoints above, then choose where arbitrage alerts should go."</p>
+                            </div>
+                            <button
+                                class="rounded-lg border border-white/10 px-3 py-2 text-xs font-semibold text-gray-300 hover:border-amber-400/40 hover:bg-amber-400/10"
+                                title="Clears changed-only digest memory, per-item profit memory, pending digest rows, and cadence counters."
+                                on:click=reset_alert_memory
+                            >
+                                "Reset Alert Memory"
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {move || {
+                                let selected = selected_arbitrage_endpoint_ids();
+                                let endpoints = arbitrage_endpoints();
+                                if endpoints.is_empty() {
+                                    vec![view! {
+                                        <div class="text-xs text-gray-500">"No endpoints available yet."</div>
+                                    }.into_any()]
+                                } else {
+                                    endpoints.into_iter().map(|endpoint| {
+                                        let id = endpoint.id;
+                                        let checked = selected.contains(&id);
+                                        let method_label = endpoint_method_label(&endpoint.method);
+                                        view! {
+                                            <label class="flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-950/40 px-3 py-2 text-xs text-gray-300">
+                                                <input
+                                                    type="checkbox"
+                                                    class="accent-violet-500"
+                                                    prop:checked=checked
+                                                    on:change=move |_| toggle_arbitrage_endpoint(id)
+                                                />
+                                                <span class="font-semibold">{endpoint.name}</span>
+                                                <span class="text-gray-500">{format!("({method_label})")}</span>
+                                            </label>
+                                        }.into_any()
+                                    }).collect::<Vec<_>>()
+                                }
+                            }}
+                        </div>
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
@@ -1689,6 +2090,50 @@ fn SettingsView(
                                 <option value="CURRENT_WORLD">"Home world only"</option>
                             </select>
                         </div>
+                        <div>
+                            <SettingHelpLabel
+                                label="Destination Scope"
+                                tooltip="Controls which worlds can be considered sell-side destinations when home-world-only selling is disabled."
+                            />
+                            <select
+                                title="Home world is the executable default. Active data center and same region can be useful for theoretical planning or multi-character selling."
+                                class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                prop:value=destination_scope
+                                on:change=move |ev| set_destination_scope(event_target_value(&ev))
+                            >
+                                <option value="HOME_WORLD">"Home world"</option>
+                                <option value="ACTIVE_DC">"Active data center"</option>
+                                <option value="SAME_REGION">"Same region"</option>
+                                <option value="CUSTOM">"Custom seller worlds"</option>
+                            </select>
+                        </div>
+                        <div>
+                            <SettingHelpLabel
+                                label="Custom Seller World IDs"
+                                tooltip="Comma-separated world IDs where you can actually sell via alts or retainers. Used only when destination scope is Custom."
+                            />
+                            <input
+                                type="text"
+                                title="Example: 21, 22, 23"
+                                class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                prop:value=seller_world_ids_text
+                                on:input=move |ev| set_seller_world_ids_text(event_target_value(&ev))
+                            />
+                        </div>
+                        <div>
+                            <SettingHelpLabel
+                                label="Weekly Velocity Floor"
+                                tooltip="Minimum average units sold per day over the last 7 days. This is separate from the current velocity threshold."
+                            />
+                            <input
+                                type="number"
+                                step="0.1"
+                                title="Calculated as total sales in the last 7 days divided by 7."
+                                class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                prop:value=weekly_velocity_threshold
+                                on:input=move |ev| set_weekly_velocity_threshold(event_target_value(&ev).parse::<f64>().unwrap_or(0.0))
+                            />
+                        </div>
                         <label class="flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
                             <input
                                 type="checkbox"
@@ -1705,6 +2150,247 @@ fn SettingsView(
                                 <span class="block text-xs text-gray-500">"Keeps arbitrage executable with FFXIV travel restrictions."</span>
                             </span>
                         </label>
+                    </div>
+
+                    <div class="rounded-xl border border-white/10 bg-zinc-950/30 p-4 space-y-4">
+                        <h4 class="text-sm font-semibold text-gray-300">"Execution & Pricing"</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <SettingHelpLabel
+                                    label="Same-DC Travel Minutes"
+                                    tooltip="Travel-time estimate for buying from another world in the same data center. This feeds net profit."
+                                />
+                                <input type="number" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=same_dc_travel_minutes
+                                    on:input=move |ev| set_same_dc_travel_minutes(event_target_value(&ev).parse::<i32>().unwrap_or(2))
+                                />
+                            </div>
+                            <div>
+                                <SettingHelpLabel
+                                    label="Cross-DC Travel Minutes"
+                                    tooltip="Travel-time estimate for buying from another data center and returning to sell. This feeds net profit."
+                                />
+                                <input type="number" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=cross_dc_travel_minutes
+                                    on:input=move |ev| set_cross_dc_travel_minutes(event_target_value(&ev).parse::<i32>().unwrap_or(8))
+                                />
+                            </div>
+                            <div>
+                                <SettingHelpLabel
+                                    label="Reference Price Scope"
+                                    tooltip="World set used for reference min/average price context in the table and alert text."
+                                />
+                                <select class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=reference_price_scope
+                                    on:change=move |ev| set_reference_price_scope(event_target_value(&ev))
+                                >
+                                    <option value="DESTINATION_WORLD">"Destination world"</option>
+                                    <option value="DESTINATION_DC">"Destination data center"</option>
+                                    <option value="ACTIVE_REGION">"Active region"</option>
+                                    <option value="SOURCE_AND_DESTINATION">"Source + destination"</option>
+                                </select>
+                            </div>
+                            <div>
+                                <SettingHelpLabel
+                                    label="Sell Price Strategy"
+                                    tooltip="Controls the price used as the expected sell reference for profit calculations."
+                                />
+                                <select class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=sell_price_strategy
+                                    on:change=move |ev| set_sell_price_strategy(event_target_value(&ev))
+                                >
+                                    <option value="LOWER_OF_ASK_AND_MEDIAN">"Lower of ask and median"</option>
+                                    <option value="DESTINATION_LOW_ASK">"Destination low ask"</option>
+                                    <option value="MEDIAN_SALE">"Median sale"</option>
+                                </select>
+                            </div>
+                            <div>
+                                <SettingHelpLabel
+                                    label="Min Markdown (%)"
+                                    tooltip="Minimum percentage below the selected sell reference. Higher values favor deeper discounts."
+                                />
+                                <input type="number" step="0.1" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=min_markdown_pct
+                                    on:input=move |ev| set_min_markdown_pct(event_target_value(&ev).parse::<f64>().unwrap_or(0.0))
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rounded-xl border border-white/10 bg-zinc-950/30 p-4 space-y-4">
+                        <h4 class="text-sm font-semibold text-gray-300">"Table Behavior"</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <SettingHelpLabel label="Table Grouping" tooltip="Controls how many options per item are shown in the table." />
+                                <select class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=table_grouping_strategy
+                                    on:change=move |ev| set_table_grouping_strategy(event_target_value(&ev))
+                                >
+                                    <option value="BEST_PLUS_SAME_DC">"Best + same-DC fallback"</option>
+                                    <option value="BEST_ONLY">"Best only"</option>
+                                    <option value="ALL">"All rows"</option>
+                                </select>
+                            </div>
+                            <div>
+                                <SettingHelpLabel label="Table Rows / Item" tooltip="Maximum rows per item/HQ in the table after grouping." />
+                                <input type="number" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=table_max_rows_per_item
+                                    on:input=move |ev| set_table_max_rows_per_item(event_target_value(&ev).parse::<i32>().unwrap_or(2))
+                                />
+                            </div>
+                            <label class="flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
+                                <input type="checkbox" class="mt-1 accent-violet-500" prop:checked=table_include_same_dc_best on:change=move |ev| set_table_include_same_dc_best(event_target_checked(&ev)) />
+                                <span><SettingHelpLabel label="Include same-DC fallback" tooltip="When the best row is cross-DC, also include the best same-DC row for the same item/HQ." /></span>
+                            </label>
+                            <label class="flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
+                                <input type="checkbox" class="mt-1 accent-violet-500" prop:checked=table_show_theoretical on:change=move |ev| set_table_show_theoretical(event_target_checked(&ev)) />
+                                <span><SettingHelpLabel label="Show theoretical rows" tooltip="Shows rows whose sell destination is not directly executable with the current home-world selling setup." /></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="rounded-xl border border-white/10 bg-zinc-950/30 p-4 space-y-4">
+                        <h4 class="text-sm font-semibold text-gray-300">"Alert & Digest Behavior"</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <SettingHelpLabel label="Alert Grouping" tooltip="Controls how many options per item are eligible for Discord delivery. This is separate from the table." />
+                                <select class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=alert_grouping_strategy
+                                    on:change=move |ev| set_alert_grouping_strategy(event_target_value(&ev))
+                                >
+                                    <option value="BEST_PLUS_SAME_DC">"Best + same-DC fallback"</option>
+                                    <option value="BEST_ONLY">"Best only"</option>
+                                    <option value="ALL">"All rows"</option>
+                                </select>
+                            </div>
+                            <div>
+                                <SettingHelpLabel label="Alert Rows / Item" tooltip="Maximum rows per item/HQ that can be included in alert messages." />
+                                <input type="number" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=alert_max_rows_per_item
+                                    on:input=move |ev| set_alert_max_rows_per_item(event_target_value(&ev).parse::<i32>().unwrap_or(2))
+                                />
+                            </div>
+                            <div>
+                                <SettingHelpLabel label="Profit Improvement (Gil)" tooltip="Same item/HQ alerts only send again when profit beats the previous delivered best by at least this much." />
+                                <input type="number" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=alert_profit_improvement_threshold_gil
+                                    on:input=move |ev| set_alert_profit_improvement_threshold_gil(event_target_value(&ev).parse::<i64>().unwrap_or(1))
+                                />
+                            </div>
+                            <div>
+                                <SettingHelpLabel label="Profit Improvement (%)" tooltip="Optional percentage improvement required before the same item/HQ alerts again." />
+                                <input type="number" step="0.1" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=alert_profit_improvement_threshold_pct
+                                    on:input=move |ev| set_alert_profit_improvement_threshold_pct(event_target_value(&ev).parse::<f64>().unwrap_or(0.0))
+                                />
+                            </div>
+                            <label class="flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
+                                <input type="checkbox" class="mt-1 accent-violet-500" prop:checked=alert_include_same_dc_best on:change=move |ev| set_alert_include_same_dc_best(event_target_checked(&ev)) />
+                                <span><SettingHelpLabel label="Alert same-DC fallback" tooltip="When the best alert candidate is cross-DC, include the best same-DC candidate too." /></span>
+                            </label>
+                            <label class="flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
+                                <input type="checkbox" class="mt-1 accent-violet-500" prop:checked=alert_show_theoretical on:change=move |ev| set_alert_show_theoretical(event_target_checked(&ev)) />
+                                <span><SettingHelpLabel label="Alert theoretical rows" tooltip="Allows alert messages to include rows that may require alternate selling setup." /></span>
+                            </label>
+                            <label class="flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
+                                <input type="checkbox" class="mt-1 accent-violet-500" prop:checked=digest_changed_only on:change=move |ev| set_digest_changed_only(event_target_checked(&ev)) />
+                                <span><SettingHelpLabel label="Changed-only digest" tooltip="Suppresses unchanged rows until ask prices, sale summaries, or tracked risk metrics change." /></span>
+                            </label>
+                            <label class="flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
+                                <input type="checkbox" class="mt-1 accent-violet-500" prop:checked=digest_include_review on:change=move |ev| set_digest_include_review(event_target_checked(&ev)) />
+                                <span><SettingHelpLabel label="Include review section" tooltip="Includes volatile or regime-change rows in a separate review section." /></span>
+                            </label>
+                            <div>
+                                <SettingHelpLabel label="Max Clean Rows" tooltip="Maximum clean opportunities included per digest message." />
+                                <input type="number" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=digest_max_clean
+                                    on:input=move |ev| set_digest_max_clean(event_target_value(&ev).parse::<i32>().unwrap_or(8))
+                                />
+                            </div>
+                            <div>
+                                <SettingHelpLabel label="Max Review Rows" tooltip="Maximum volatile/review opportunities included per digest message." />
+                                <input type="number" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=digest_max_review
+                                    on:input=move |ev| set_digest_max_review(event_target_value(&ev).parse::<i32>().unwrap_or(4))
+                                />
+                            </div>
+                            <label class="flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
+                                <input type="checkbox" class="mt-1 accent-violet-500" prop:checked=digest_include_universalis_links on:change=move |ev| set_digest_include_universalis_links(event_target_checked(&ev)) />
+                                <span><SettingHelpLabel label="Universalis links" tooltip="Includes Universalis item links in digest text." /></span>
+                            </label>
+                            <label class="flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
+                                <input type="checkbox" class="mt-1 accent-violet-500" prop:checked=digest_include_ultros_links on:change=move |ev| set_digest_include_ultros_links(event_target_checked(&ev)) />
+                                <span><SettingHelpLabel label="Ultros links" tooltip="Includes local market item links in digest text when available." /></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="rounded-xl border border-white/10 bg-zinc-950/30 p-4 space-y-4">
+                        <h4 class="text-sm font-semibold text-gray-300">"Cadence & Immediate Alerts"</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <SettingHelpLabel label="Alert Frequency" tooltip="Controls normal digest cadence. Immediate threshold alerts can still fire independently." />
+                                <select class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=alert_frequency_mode
+                                    on:change=move |ev| set_alert_frequency_mode(event_target_value(&ev))
+                                >
+                                    <option value="IMMEDIATE">"Immediate only"</option>
+                                    <option value="DIGEST_INTERVAL">"Every X minutes"</option>
+                                    <option value="SCANNER_COMPLETE">"After every scan"</option>
+                                    <option value="SCHEDULED">"Scheduled"</option>
+                                </select>
+                            </div>
+                            <div>
+                                <SettingHelpLabel label="Digest Interval Minutes" tooltip="Minimum minutes between normal digest sends for interval or scheduled fallback modes." />
+                                <input type="number" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=alert_digest_interval_minutes
+                                    on:input=move |ev| set_alert_digest_interval_minutes(event_target_value(&ev).parse::<i32>().unwrap_or(60))
+                                />
+                            </div>
+                            <div class="col-span-2">
+                                <SettingHelpLabel label="Schedule Cron" tooltip="Optional 5- or 6-field cron expression for scheduled digest mode." />
+                                <input type="text" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=alert_schedule_cron
+                                    on:input=move |ev| set_alert_schedule_cron(event_target_value(&ev))
+                                />
+                            </div>
+                            <label class="flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
+                                <input type="checkbox" class="mt-1 accent-violet-500" prop:checked=alert_send_empty_digest on:change=move |ev| set_alert_send_empty_digest(event_target_checked(&ev)) />
+                                <span><SettingHelpLabel label="Send empty digest" tooltip="Allows a digest message even when no opportunities qualify. Usually leave off." /></span>
+                            </label>
+                            <label class="flex items-start gap-3 rounded-xl border border-white/10 bg-zinc-950/30 p-3">
+                                <input type="checkbox" class="mt-1 accent-violet-500" prop:checked=alert_immediate_threshold_enabled on:change=move |ev| set_alert_immediate_threshold_enabled(event_target_checked(&ev)) />
+                                <span><SettingHelpLabel label="Immediate threshold alerts" tooltip="Sends an immediate alert when an opportunity exceeds the configured high-value thresholds." /></span>
+                            </label>
+                            <div>
+                                <SettingHelpLabel label="Immediate Min Profit" tooltip="Minimum net profit required for immediate alert delivery." />
+                                <input type="number" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=alert_immediate_min_net_profit
+                                    on:input=move |ev| set_alert_immediate_min_net_profit(event_target_value(&ev).parse::<i64>().unwrap_or(500000))
+                                />
+                            </div>
+                            <div>
+                                <SettingHelpLabel label="Immediate Min Markdown (%)" tooltip="Optional markdown percentage required for immediate alerts." />
+                                <input type="number" step="0.1" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=alert_immediate_min_markdown_pct
+                                    on:input=move |ev| set_alert_immediate_min_markdown_pct(event_target_value(&ev).parse::<f64>().unwrap_or(0.0))
+                                />
+                            </div>
+                            <div>
+                                <SettingHelpLabel label="Immediate Min Velocity" tooltip="Optional current velocity required for immediate alerts." />
+                                <input type="number" step="0.1" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=alert_immediate_min_velocity
+                                    on:input=move |ev| set_alert_immediate_min_velocity(event_target_value(&ev).parse::<f64>().unwrap_or(0.0))
+                                />
+                            </div>
+                            <div>
+                                <SettingHelpLabel label="Immediate Max / Hour" tooltip="Maximum immediate alert messages sent per hour for this profile." />
+                                <input type="number" class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
+                                    prop:value=alert_immediate_max_per_hour
+                                    on:input=move |ev| set_alert_immediate_max_per_hour(event_target_value(&ev).parse::<i32>().unwrap_or(3))
+                                />
+                            </div>
+                        </div>
                     </div>
 
                     <div class="rounded-xl border border-white/10 bg-zinc-950/30 p-4 space-y-4">

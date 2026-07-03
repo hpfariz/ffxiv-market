@@ -35,6 +35,15 @@ pub struct Model {
     pub prior_cluster_sales_count: i32,
     pub current_ask_cluster_avg: Option<f64>,
     pub ask_vs_recent_sale_gap_pct: Option<f64>,
+    pub dest_low_ask_price: i32,
+    pub selected_sell_reference_price: i32,
+    pub source_ask_avg: Option<f64>,
+    pub dest_ask_avg: Option<f64>,
+    pub reference_min_price: Option<i32>,
+    pub reference_avg_price: Option<f64>,
+    pub markdown_pct: Option<f64>,
+    pub execution_status: String,
+    pub travel_minutes: i64,
     pub computed_at: DateTime,
 }
 

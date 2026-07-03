@@ -12,6 +12,20 @@ This repository enforces strict CI checks. Before committing any code, you **mus
 
 Failure to follow these steps will result in CI failures.
 
+## Plan Compliance Gate
+
+For any multi-part user request, feature spec, handover document, or implementation plan, do not rely on memory. Treat the source document or user message as the acceptance criteria.
+
+Before reporting completion, committing, pushing, or deploying, produce and verify a checklist that maps every requirement to:
+
+- the file/function/UI location where it was implemented,
+- the targeted search or test used to verify it,
+- its status: done, intentionally deferred, or blocked.
+
+If any requirement is not mapped to implementation and verification, the work is not complete. If a requirement is intentionally deferred or blocked, state that clearly before asking the user to approve a commit, push, or deploy.
+
+For UI requirements, run targeted searches over relevant components and routes instead of relying on the obvious file only. Examples: search for table headers (`<th`), tooltip attributes (`title=`), links (`href=`), route helpers, and component names related to the requested UI. Table tooltip requirements must distinguish between header tooltips and cell tooltips.
+
 ## Deployment rule
 
 Do **not** deploy normal application code by copying files to the VM and running `docker build` on the server.

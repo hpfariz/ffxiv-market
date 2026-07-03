@@ -1098,6 +1098,65 @@ pub(crate) async fn update_arbitrage_settings(
     .await
 }
 
+pub(crate) async fn get_arbitrage_destination_endpoint_ids(id: i32) -> AppResult<Vec<i32>> {
+    fetch_api(&format!(
+        "/api/v1/profiles/{id}/settings/arbitrage/destinations"
+    ))
+    .await
+}
+
+pub(crate) async fn update_arbitrage_destination_endpoint_ids(
+    id: i32,
+    endpoint_ids: Vec<i32>,
+) -> AppResult<Vec<i32>> {
+    put_api(
+        &format!("/api/v1/profiles/{id}/settings/arbitrage/destinations"),
+        serde_json::json!({ "endpoint_ids": endpoint_ids }),
+    )
+    .await
+}
+
+pub(crate) async fn reset_arbitrage_delivery_state(id: i32) -> AppResult<()> {
+    post_api(
+        &format!("/api/v1/profiles/{id}/settings/arbitrage/reset-delivery-state"),
+        (),
+    )
+    .await
+}
+
+pub(crate) async fn apply_arbitrage_preset_api(
+    id: i32,
+    preset_name: &str,
+) -> AppResult<ProfileArbitrageSettings> {
+    post_api(
+        &format!("/api/v1/profiles/{id}/settings/arbitrage/apply-preset"),
+        serde_json::json!({ "preset_name": preset_name }),
+    )
+    .await
+}
+
+pub(crate) async fn preview_arbitrage_digest_api(id: i32) -> AppResult<ArbitrageDigestPreview> {
+    post_api(
+        &format!("/api/v1/profiles/{id}/settings/arbitrage/preview"),
+        (),
+    )
+    .await
+}
+
+pub(crate) async fn test_arbitrage_digest_api(id: i32) -> AppResult<ArbitrageTestSendResponse> {
+    post_api(
+        &format!("/api/v1/profiles/{id}/settings/arbitrage/test"),
+        (),
+    )
+    .await
+}
+
+pub(crate) async fn get_arbitrage_alert_status_api(
+    id: i32,
+) -> AppResult<ArbitrageAlertStatusResponse> {
+    fetch_api(&format!("/api/v1/profiles/{id}/arbitrage/alert-status")).await
+}
+
 pub(crate) async fn get_crafting_settings_api(
     id: i32,
 ) -> AppResult<(
@@ -1222,6 +1281,94 @@ pub(crate) struct ProfileArbitrageSettings {
     pub volatility_action: String,
     pub require_ask_confirmation: bool,
     pub max_ask_vs_sale_gap_percent: f64,
+    pub preset_name: String,
+    pub destination_world_scope: String,
+    pub seller_world_ids: Option<serde_json::Value>,
+    pub weekly_velocity_threshold: f64,
+    pub same_dc_travel_minutes: i32,
+    pub cross_dc_travel_minutes: i32,
+    pub reference_price_scope: String,
+    pub sell_price_strategy: String,
+    pub min_markdown_pct: f64,
+    pub digest_format: String,
+    pub digest_changed_only: bool,
+    pub digest_max_clean: i32,
+    pub digest_max_review: i32,
+    pub digest_include_review: bool,
+    pub digest_include_universalis_links: bool,
+    pub digest_include_ultros_links: bool,
+    pub table_grouping_strategy: String,
+    pub table_max_rows_per_item: i32,
+    pub table_include_same_dc_best: bool,
+    pub table_show_theoretical: bool,
+    pub alert_grouping_strategy: String,
+    pub alert_max_rows_per_item: i32,
+    pub alert_include_same_dc_best: bool,
+    pub alert_show_theoretical: bool,
+    pub alert_profit_improvement_threshold_gil: i64,
+    pub alert_profit_improvement_threshold_pct: f64,
+    pub alert_frequency_mode: String,
+    pub alert_digest_interval_minutes: i32,
+    pub alert_schedule_cron: Option<String>,
+    pub alert_send_empty_digest: bool,
+    pub alert_immediate_threshold_enabled: bool,
+    pub alert_immediate_min_net_profit: i64,
+    pub alert_immediate_min_markdown_pct: f64,
+    pub alert_immediate_min_velocity: f64,
+    pub alert_immediate_max_per_hour: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub(crate) struct DeliveryEmbedField {
+    pub name: String,
+    pub value: String,
+    pub inline: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub(crate) struct DeliveryEmbed {
+    pub title: String,
+    pub description: String,
+    pub color: u32,
+    pub url: Option<String>,
+    pub fields: Vec<DeliveryEmbedField>,
+    pub footer: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub(crate) struct ArbitrageDigestPreview {
+    pub title: String,
+    pub body: String,
+    pub embeds: Vec<DeliveryEmbed>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub(crate) struct ArbitrageTestSendResponse {
+    pub delivered: bool,
+    pub attempted: usize,
+    pub failed: usize,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub(crate) struct ArbitrageDeliveryAttemptSummary {
+    pub endpoint_id: Option<i32>,
+    pub delivery_kind: String,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub attempted_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub(crate) struct ArbitrageAlertStatusResponse {
+    pub scan: ArbitrageScanStatus,
+    pub pending_digest_count: i64,
+    pub last_digest_sent_at: Option<String>,
+    pub last_immediate_sent_at: Option<String>,
+    pub immediate_sent_count_window_start: Option<String>,
+    pub immediate_sent_count: i32,
+    pub next_digest_hint: Option<String>,
+    pub recent_delivery_attempts: Vec<ArbitrageDeliveryAttemptSummary>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -1279,6 +1426,15 @@ pub(crate) struct ArbitrageOpportunity {
     pub prior_cluster_sales_count: i32,
     pub current_ask_cluster_avg: Option<f64>,
     pub ask_vs_recent_sale_gap_pct: Option<f64>,
+    pub dest_low_ask_price: i32,
+    pub selected_sell_reference_price: i32,
+    pub source_ask_avg: Option<f64>,
+    pub dest_ask_avg: Option<f64>,
+    pub reference_min_price: Option<i32>,
+    pub reference_avg_price: Option<f64>,
+    pub markdown_pct: Option<f64>,
+    pub execution_status: String,
+    pub travel_minutes: i64,
     pub computed_at: chrono::NaiveDateTime,
 }
 
