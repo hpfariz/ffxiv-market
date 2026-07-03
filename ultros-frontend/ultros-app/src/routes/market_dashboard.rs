@@ -838,13 +838,12 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
         if let Some(pid) = profile_id {
             spawn_local(async move {
                 if let Ok(status) = get_arbitrage_scan_status_api(pid).await {
-                    if status.phase == "complete" {
-                        if let Some(completed_at) = status.completed_at.clone() {
-                            if last_seen_scan_completion() != Some(completed_at.clone()) {
-                                set_last_seen_scan_completion(Some(completed_at));
-                                set_refresh_tick.update(|tick| *tick = tick.wrapping_add(1));
-                            }
-                        }
+                    if status.phase == "complete"
+                        && let Some(completed_at) = status.completed_at.clone()
+                        && last_seen_scan_completion() != Some(completed_at.clone())
+                    {
+                        set_last_seen_scan_completion(Some(completed_at));
+                        set_refresh_tick.update(|tick| *tick = tick.wrapping_add(1));
                     }
                     set_scan_status(Some(status));
                 }
@@ -902,7 +901,7 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
 
             <Show
                 when=move || scan_status().is_some()
-                fallback=|| view! {}.into_any()
+                fallback=|| ().into_any()
             >
                 {move || {
                     scan_status()
@@ -951,7 +950,7 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                                     </div>
                                     <Show
                                         when=move || has_error
-                                        fallback=|| view! {}.into_any()
+                                        fallback=|| ().into_any()
                                     >
                                         <div class="text-xs text-red-300">
                                             {error_message.clone()}
