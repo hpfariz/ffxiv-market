@@ -12,6 +12,7 @@ pub mod alert_list_update;
 pub mod alert_notification_rule;
 pub mod alert_price;
 pub mod alert_retainer_undercut;
+pub mod arbitrage_digest_state;
 pub mod arbitrage_opportunity;
 pub mod datacenter;
 pub mod discord_user;

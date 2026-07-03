@@ -1,7 +1,10 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::alerts::delivery::{
+    deliver_non_discord_endpoint, deliver_to_endpoint, get_serenity_ctx, send_dm, send_webhook,
+};
 use chrono::{NaiveDateTime, Utc};
 use sea_orm::{ColumnTrait, DbBackend, EntityTrait, FromQueryResult, QueryFilter, Statement};
 use serde::Serialize;
@@ -10,7 +13,9 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, instrument};
 use ultros_db::UltrosDb;
-use ultros_db::entity::{arbitrage_opportunity, datacenter, player_profile, world};
+use ultros_db::entity::{
+    arbitrage_digest_state, arbitrage_opportunity, datacenter, player_profile, world,
+};
 
 pub struct ArbitrageDaemon {
     db: UltrosDb,
@@ -130,6 +135,9 @@ struct CandidateOpportunity {
     source_timestamp: NaiveDateTime,
     dest_active_count: i64,
     units_sold_48h: i64,
+    units_sold_7d: i64,
+    median_sale_price: i32,
+    latest_sale_timestamp: Option<NaiveDateTime>,
     regime_recent_window_count: i32,
     recent_cluster_avg_price: Option<f64>,
     prior_cluster_avg_price: Option<f64>,
@@ -329,6 +337,7 @@ async fn run_arbitrage_scan(
         let max_age_seconds = settings.max_listing_age_hours as i64 * 3600;
         let staleness_cutoff = Utc::now().naive_utc() - chrono::Duration::seconds(max_age_seconds);
         let sales_cutoff = Utc::now().naive_utc() - chrono::Duration::hours(48);
+        let sales_7d_cutoff = Utc::now().naive_utc() - chrono::Duration::days(7);
 
         let sql = r#"
             WITH fresh_listings AS (
@@ -390,6 +399,19 @@ async fn run_arbitrage_scan(
                   AND price_per_item > 0
                 GROUP BY sold_item_id, hq, world_id
             ),
+            sales_7d AS (
+                SELECT sold_item_id AS item_id,
+                       hq,
+                       world_id,
+                       SUM(quantity)::bigint AS units_sold_7d,
+                       MAX(sold_date) AS latest_sale_timestamp
+                FROM sale_history
+                WHERE world_id = ANY($6)
+                  AND sold_item_id = ANY($4)
+                  AND sold_date > $7
+                  AND price_per_item > 0
+                GROUP BY sold_item_id, hq, world_id
+            ),
             sales_clusters AS (
                 SELECT item_id,
                        hq,
@@ -411,6 +433,9 @@ async fn run_arbitrage_scan(
                    s.timestamp as source_timestamp,
                    active.active_count as dest_active_count,
                    sales.units_sold as units_sold_48h,
+                   COALESCE(sales7.units_sold_7d, 0)::bigint AS units_sold_7d,
+                   sales.median_sale_price AS median_sale_price,
+                   sales7.latest_sale_timestamp,
                    COALESCE(clusters.regime_recent_window_count, 0)::integer AS regime_recent_window_count,
                    clusters.recent_cluster_avg_price,
                    clusters.prior_cluster_avg_price,
@@ -447,6 +472,9 @@ async fn run_arbitrage_scan(
             JOIN sales_48h sales ON sales.item_id = d.item_id
                                 AND sales.hq = d.hq
                                 AND sales.world_id = d.world_id
+            LEFT JOIN sales_7d sales7 ON sales7.item_id = d.item_id
+                                     AND sales7.hq = d.hq
+                                     AND sales7.world_id = d.world_id
             LEFT JOIN sales_clusters clusters ON clusters.item_id = d.item_id
                                              AND clusters.hq = d.hq
                                              AND clusters.world_id = d.world_id
@@ -469,6 +497,7 @@ async fn run_arbitrage_scan(
                 marketable_item_ids.clone().into(),
                 source_world_ids.clone().into(),
                 dest_world_ids.clone().into(),
+                sales_7d_cutoff.into(),
             ],
         ))
         .all(db.get_connection())
@@ -524,6 +553,7 @@ async fn run_arbitrage_scan(
             }
 
             let velocity_score = cand.units_sold_48h as f64 / cand.dest_active_count as f64;
+            let weekly_avg_velocity = weekly_avg_velocity(cand.units_sold_7d);
 
             if velocity_score < settings.velocity_threshold {
                 stats.velocity_rejected += 1;
@@ -589,6 +619,11 @@ async fn run_arbitrage_scan(
                 gross_profit,
                 net_profit,
                 velocity_score,
+                weekly_avg_velocity,
+                units_sold_48h: cand.units_sold_48h,
+                units_sold_7d: cand.units_sold_7d,
+                median_sale_price: cand.median_sale_price,
+                latest_sale_timestamp: cand.latest_sale_timestamp,
                 listing_age_seconds,
                 total_cost,
                 quantity_available: qty_to_buy,
@@ -610,8 +645,17 @@ async fn run_arbitrage_scan(
         }
 
         let saved = opportunities.len();
+        let digest_opportunities = opportunities.clone();
         db.save_arbitrage_opportunities(profile.id, opportunities)
             .await?;
+        if let Err(e) = deliver_arbitrage_digest(db, &profile, &digest_opportunities).await {
+            error!(
+                profile_id = profile.id,
+                profile = %profile.display_name,
+                error = ?e,
+                "Failed to deliver arbitrage digest"
+            );
+        }
         info!(
             profile_id = profile.id,
             profile = %profile.display_name,
@@ -679,6 +723,464 @@ fn volatility_flag(
     }
 
     flag
+}
+
+type DigestKey = (i32, i32, bool, i32, i32);
+
+#[derive(Clone)]
+struct DigestDeliveryCandidate {
+    opportunity: arbitrage_opportunity::Model,
+    state: arbitrage_digest_state::Model,
+}
+
+async fn deliver_arbitrage_digest(
+    db: &UltrosDb,
+    profile: &player_profile::Model,
+    opportunities: &[arbitrage_opportunity::Model],
+) -> Result<(), anyhow::Error> {
+    if opportunities.is_empty() {
+        return Ok(());
+    }
+
+    let now = Utc::now().naive_utc();
+    let previous_states = db.get_arbitrage_digest_states(profile.id).await?;
+    let previous_by_key: HashMap<DigestKey, arbitrage_digest_state::Model> = previous_states
+        .into_iter()
+        .map(|state| (digest_state_key(&state), state))
+        .collect();
+
+    let mut changed = Vec::new();
+    for opportunity in opportunities {
+        let key = opportunity_digest_key(opportunity);
+        let previous = previous_by_key.get(&key);
+        let snapshot_hash = digest_snapshot_hash(opportunity);
+        if !digest_snapshot_changed(
+            previous.map(|state| state.snapshot_hash.as_str()),
+            &snapshot_hash,
+        ) {
+            continue;
+        }
+
+        if digest_on_cooldown(previous, profile.alert_item_cooldown_minutes, now) {
+            continue;
+        }
+
+        changed.push(DigestDeliveryCandidate {
+            opportunity: opportunity.clone(),
+            state: digest_state_from_opportunity(profile.id, opportunity, snapshot_hash, now),
+        });
+    }
+
+    if changed.is_empty() {
+        return Ok(());
+    }
+
+    let world_names = load_digest_world_names(db, &changed).await?;
+    let title = format!("Arbitrage Digest: {}", profile.display_name);
+    let body = build_arbitrage_digest_body(&changed, &world_names);
+
+    if deliver_arbitrage_digest_message(db, profile, &title, &body).await? {
+        let delivered_states = changed
+            .into_iter()
+            .map(|candidate| candidate.state)
+            .collect();
+        db.upsert_arbitrage_digest_states(delivered_states).await?;
+    }
+
+    Ok(())
+}
+
+async fn load_digest_world_names(
+    db: &UltrosDb,
+    changed: &[DigestDeliveryCandidate],
+) -> Result<HashMap<i32, String>, anyhow::Error> {
+    let world_ids: Vec<i32> = changed
+        .iter()
+        .flat_map(|candidate| {
+            [
+                candidate.opportunity.source_world_id,
+                candidate.opportunity.dest_world_id,
+            ]
+        })
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    if world_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let worlds = world::Entity::find()
+        .filter(world::Column::Id.is_in(world_ids))
+        .all(db.get_connection())
+        .await?;
+
+    Ok(worlds
+        .into_iter()
+        .map(|world| (world.id, world.name))
+        .collect())
+}
+
+async fn deliver_arbitrage_digest_message(
+    db: &UltrosDb,
+    profile: &player_profile::Model,
+    title: &str,
+    body: &str,
+) -> Result<bool, anyhow::Error> {
+    let ctx_opt = get_serenity_ctx();
+    let mut attempted = false;
+    let mut success = false;
+    let mut last_error: Option<anyhow::Error> = None;
+
+    match db.list_endpoints(profile.discord_user_id).await {
+        Ok(endpoints) => {
+            attempted = !endpoints.is_empty();
+            for endpoint in endpoints {
+                let delivered = if let Some(ctx) = &ctx_opt {
+                    deliver_to_endpoint(&endpoint, title, body, db, ctx.as_ref()).await
+                } else {
+                    deliver_non_discord_endpoint(&endpoint, title, body, db).await
+                };
+
+                if let Err(e) = delivered {
+                    error!(
+                        profile_id = profile.id,
+                        endpoint_id = endpoint.id,
+                        error = ?e,
+                        "Failed to send arbitrage digest to notification endpoint"
+                    );
+                    last_error = Some(e);
+                } else {
+                    success = true;
+                }
+            }
+        }
+        Err(e) => {
+            error!(
+                profile_id = profile.id,
+                error = ?e,
+                "Failed to load notification endpoints for arbitrage digest"
+            );
+            last_error = Some(e);
+        }
+    }
+
+    if let Some(webhook_url) = &profile.alert_channel_webhook
+        && !webhook_url.trim().is_empty()
+    {
+        attempted = true;
+        if let Err(e) = send_webhook(webhook_url, title, body).await {
+            error!(
+                profile_id = profile.id,
+                error = ?e,
+                "Failed to send arbitrage digest webhook"
+            );
+            last_error = Some(e);
+        } else {
+            success = true;
+        }
+    }
+
+    if profile.alert_channel_dm {
+        attempted = true;
+        if let Some(ctx) = &ctx_opt {
+            if let Err(e) = send_dm(profile.discord_user_id, title, body, ctx.as_ref()).await {
+                error!(
+                    profile_id = profile.id,
+                    error = ?e,
+                    "Failed to send arbitrage digest DM"
+                );
+                last_error = Some(e);
+            } else {
+                success = true;
+            }
+        } else {
+            let message = format!(
+                "Serenity context not available for arbitrage digest DM profile {}",
+                profile.id
+            );
+            error!("{message}");
+            last_error = Some(anyhow::Error::msg(message));
+        }
+    }
+
+    if success {
+        return Ok(true);
+    }
+
+    if !attempted {
+        if let Some(e) = last_error {
+            return Err(e);
+        }
+        info!(
+            profile_id = profile.id,
+            "No arbitrage digest notification destinations configured"
+        );
+        return Ok(false);
+    }
+
+    Err(last_error
+        .unwrap_or_else(|| anyhow::Error::msg("arbitrage digest delivery did not succeed")))
+}
+
+fn build_arbitrage_digest_body(
+    changed: &[DigestDeliveryCandidate],
+    world_names: &HashMap<i32, String>,
+) -> String {
+    let mut body = String::from(
+        "Changed opportunities only. Previously delivered rows are omitted until ask prices or sale-history summaries change.\n",
+    );
+    let mut clean: Vec<&DigestDeliveryCandidate> = changed
+        .iter()
+        .filter(|candidate| !is_review_volatility_flag(&candidate.opportunity.volatility_flag))
+        .collect();
+    let mut review: Vec<&DigestDeliveryCandidate> = changed
+        .iter()
+        .filter(|candidate| is_review_volatility_flag(&candidate.opportunity.volatility_flag))
+        .collect();
+
+    clean.sort_by(|a, b| b.opportunity.net_profit.cmp(&a.opportunity.net_profit));
+    review.sort_by(|a, b| b.opportunity.net_profit.cmp(&a.opportunity.net_profit));
+
+    let mut omitted = 0usize;
+    append_digest_section(
+        &mut body,
+        "Clean Opportunities",
+        &clean,
+        world_names,
+        &mut omitted,
+    );
+    append_digest_section(
+        &mut body,
+        "Review: Volatile Opportunities",
+        &review,
+        world_names,
+        &mut omitted,
+    );
+
+    if omitted > 0 {
+        let suffix = format!(
+            "\n{} additional changed rows omitted from this digest.",
+            omitted
+        );
+        if body.len() + suffix.len() <= 3900 {
+            body.push_str(&suffix);
+        }
+    }
+
+    body
+}
+
+fn append_digest_section(
+    body: &mut String,
+    title: &str,
+    candidates: &[&DigestDeliveryCandidate],
+    world_names: &HashMap<i32, String>,
+    omitted: &mut usize,
+) {
+    if candidates.is_empty() {
+        return;
+    }
+
+    let header = format!("\n**{title}**\n");
+    if body.len() + header.len() <= 3900 {
+        body.push_str(&header);
+    }
+
+    for candidate in candidates {
+        let line = digest_line(candidate, world_names);
+        if body.len() + line.len() <= 3900 {
+            body.push_str(&line);
+        } else {
+            *omitted += 1;
+        }
+    }
+}
+
+fn digest_line(candidate: &DigestDeliveryCandidate, world_names: &HashMap<i32, String>) -> String {
+    let opportunity = &candidate.opportunity;
+    let state = &candidate.state;
+    let item_name = xiv_gen_db::data()
+        .items
+        .get(&xiv_gen::ItemId(opportunity.item_id))
+        .map(|item| item.name.as_str())
+        .unwrap_or("Unknown Item");
+    let source_world = digest_world_name(world_names, opportunity.source_world_id);
+    let dest_world = digest_world_name(world_names, opportunity.dest_world_id);
+    let quality = if opportunity.hq { "HQ" } else { "NQ" };
+    let risk = if opportunity.volatility_flag == "NONE" {
+        "Clean"
+    } else {
+        opportunity.volatility_flag.as_str()
+    };
+
+    format!(
+        "- {} ({} #{}) {} -> {}: buy {} / sell {}, qty {}, net {} gil, vel {:.2} / {:.1}/day, risk {}\n",
+        item_name,
+        quality,
+        opportunity.item_id,
+        source_world,
+        dest_world,
+        format_i64_with_commas(state.source_price as i64),
+        format_i64_with_commas(state.dest_price as i64),
+        state.quantity_available,
+        format_i64_with_commas(state.net_profit),
+        opportunity.velocity_score,
+        opportunity.weekly_avg_velocity,
+        risk
+    )
+}
+
+fn digest_world_name(world_names: &HashMap<i32, String>, world_id: i32) -> String {
+    world_names
+        .get(&world_id)
+        .cloned()
+        .unwrap_or_else(|| format!("World #{world_id}"))
+}
+
+fn digest_state_from_opportunity(
+    profile_id: i32,
+    opportunity: &arbitrage_opportunity::Model,
+    snapshot_hash: String,
+    now: NaiveDateTime,
+) -> arbitrage_digest_state::Model {
+    arbitrage_digest_state::Model {
+        id: 0,
+        profile_id,
+        item_id: opportunity.item_id,
+        hq: opportunity.hq,
+        source_world_id: opportunity.source_world_id,
+        dest_world_id: opportunity.dest_world_id,
+        snapshot_hash,
+        source_price: source_unit_price(opportunity),
+        dest_price: competing_unit_price(opportunity),
+        quantity_available: opportunity.quantity_available,
+        net_profit: opportunity.net_profit,
+        volatility_flag: opportunity.volatility_flag.clone(),
+        latest_sale_timestamp: opportunity.latest_sale_timestamp,
+        units_sold_48h: opportunity.units_sold_48h,
+        units_sold_7d: opportunity.units_sold_7d,
+        median_sale_price: opportunity.median_sale_price,
+        recent_cluster_avg_price: opportunity.recent_cluster_avg_price,
+        prior_cluster_avg_price: opportunity.prior_cluster_avg_price,
+        weekly_avg_velocity: opportunity.weekly_avg_velocity,
+        delivered_at: now,
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+fn digest_snapshot_hash(opportunity: &arbitrage_opportunity::Model) -> String {
+    format!(
+        "source_price={}|dest_price={}|quantity={}|net_profit={}|volatility_flag={}|latest_sale={}|units_48h={}|units_7d={}|median_sale={}|recent_sales={}|prior_sales={}|recent_avg={}|prior_avg={}|current_ask_avg={}|ask_gap={}|weekly={:.4}",
+        source_unit_price(opportunity),
+        competing_unit_price(opportunity),
+        opportunity.quantity_available,
+        opportunity.net_profit,
+        opportunity.volatility_flag,
+        opportunity
+            .latest_sale_timestamp
+            .map(|timestamp| timestamp.to_string())
+            .unwrap_or_else(|| "none".to_string()),
+        opportunity.units_sold_48h,
+        opportunity.units_sold_7d,
+        opportunity.median_sale_price,
+        opportunity.recent_cluster_sales_count,
+        opportunity.prior_cluster_sales_count,
+        snapshot_opt_f64(opportunity.recent_cluster_avg_price),
+        snapshot_opt_f64(opportunity.prior_cluster_avg_price),
+        snapshot_opt_f64(opportunity.current_ask_cluster_avg),
+        snapshot_opt_f64(opportunity.ask_vs_recent_sale_gap_pct),
+        opportunity.weekly_avg_velocity,
+    )
+}
+
+fn snapshot_opt_f64(value: Option<f64>) -> String {
+    value
+        .map(|value| format!("{value:.4}"))
+        .unwrap_or_else(|| "none".to_string())
+}
+
+fn digest_snapshot_changed(previous_hash: Option<&str>, current_hash: &str) -> bool {
+    previous_hash != Some(current_hash)
+}
+
+fn digest_on_cooldown(
+    previous: Option<&arbitrage_digest_state::Model>,
+    cooldown_minutes: i32,
+    now: NaiveDateTime,
+) -> bool {
+    let Some(previous) = previous else {
+        return false;
+    };
+    if cooldown_minutes <= 0 {
+        return false;
+    }
+
+    now.signed_duration_since(previous.delivered_at)
+        < chrono::Duration::minutes(cooldown_minutes as i64)
+}
+
+fn opportunity_digest_key(opportunity: &arbitrage_opportunity::Model) -> DigestKey {
+    (
+        opportunity.profile_id,
+        opportunity.item_id,
+        opportunity.hq,
+        opportunity.source_world_id,
+        opportunity.dest_world_id,
+    )
+}
+
+fn digest_state_key(state: &arbitrage_digest_state::Model) -> DigestKey {
+    (
+        state.profile_id,
+        state.item_id,
+        state.hq,
+        state.source_world_id,
+        state.dest_world_id,
+    )
+}
+
+fn source_unit_price(opportunity: &arbitrage_opportunity::Model) -> i32 {
+    if opportunity.quantity_available <= 0 {
+        return 0;
+    }
+    clamp_i64_to_i32(opportunity.total_cost / opportunity.quantity_available as i64)
+}
+
+fn competing_unit_price(opportunity: &arbitrage_opportunity::Model) -> i32 {
+    if opportunity.quantity_available <= 0 {
+        return 0;
+    }
+    let gross_unit_profit = opportunity.gross_profit / opportunity.quantity_available as i64;
+    clamp_i64_to_i32(source_unit_price(opportunity) as i64 + gross_unit_profit)
+}
+
+fn clamp_i64_to_i32(value: i64) -> i32 {
+    value.clamp(i32::MIN as i64, i32::MAX as i64) as i32
+}
+
+fn weekly_avg_velocity(units_sold_7d: i64) -> f64 {
+    units_sold_7d as f64 / 7.0
+}
+
+fn is_review_volatility_flag(flag: &str) -> bool {
+    flag != "NONE"
+}
+
+fn format_i64_with_commas(value: i64) -> String {
+    let sign = if value < 0 { "-" } else { "" };
+    let digits = (value as i128).abs().to_string();
+    let mut reversed = String::new();
+
+    for (index, ch) in digits.chars().rev().enumerate() {
+        if index > 0 && index % 3 == 0 {
+            reversed.push(',');
+        }
+        reversed.push(ch);
+    }
+
+    format!("{sign}{}", reversed.chars().rev().collect::<String>())
 }
 
 async fn resolve_execution_worlds(
@@ -781,5 +1283,31 @@ fn estimate_travel_time(
             "SAME_DC_VISIT" => 2,
             _ => 8,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn weekly_velocity_is_units_sold_over_seven_days() {
+        assert_eq!(weekly_avg_velocity(0), 0.0);
+        assert_eq!(weekly_avg_velocity(14), 2.0);
+        assert!((weekly_avg_velocity(10) - 1.428_571).abs() < 0.000_01);
+    }
+
+    #[test]
+    fn digest_snapshot_changes_only_when_fingerprint_differs() {
+        assert!(!digest_snapshot_changed(Some("same"), "same"));
+        assert!(digest_snapshot_changed(Some("old"), "new"));
+        assert!(digest_snapshot_changed(None, "new"));
+    }
+
+    #[test]
+    fn volatile_flags_are_routed_to_review() {
+        assert!(!is_review_volatility_flag("NONE"));
+        assert!(is_review_volatility_flag("UNCONFIRMED_SPIKE"));
+        assert!(is_review_volatility_flag("CONFIRMED_REGIME_CHANGE"));
     }
 }

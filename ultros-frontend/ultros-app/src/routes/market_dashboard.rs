@@ -27,6 +27,28 @@ enum MarketTab {
 }
 
 #[component]
+fn SettingHelpLabel(label: &'static str, tooltip: &'static str) -> impl IntoView {
+    view! {
+        <div class="mb-1 flex items-center gap-1.5">
+            <span class="block text-gray-400 font-semibold">{label}</span>
+            <span class="group relative inline-flex">
+                <span
+                    tabindex="0"
+                    aria-label=tooltip
+                    title=tooltip
+                    class="inline-flex h-4 w-4 items-center justify-center rounded-full border border-violet-400/40 bg-violet-500/10 text-[10px] font-bold leading-none text-violet-200 outline-none focus:border-violet-300 focus:bg-violet-500/20"
+                >
+                    "?"
+                </span>
+                <span class="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-64 -translate-x-1/2 rounded-md border border-white/10 bg-zinc-950 p-2 text-xs font-normal leading-snug text-gray-300 shadow-xl group-hover:block group-focus-within:block">
+                    {tooltip}
+                </span>
+            </span>
+        </div>
+    }
+}
+
+#[component]
 pub fn MarketDashboard() -> impl IntoView {
     let (active_tab, set_active_tab) = signal(MarketTab::Dashboard);
 
@@ -1075,6 +1097,11 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                                             .unwrap_or_else(|| "n/a".to_string()),
                                         ask_gap_text
                                     );
+                                    let velocity_title = format!(
+                                        "Current velocity = units sold in the last 48h divided by active destination listings ({} units / active listings). Weekly average = total units sold in the last 7 days divided by 7 ({} units / 7).",
+                                        opp.units_sold_48h,
+                                        opp.units_sold_7d
+                                    );
                                     view! {
                                         <tr class=if is_volatile { "bg-amber-500/[0.04] hover:bg-amber-500/[0.08] transition-colors" } else { "hover:bg-white/5 transition-colors" }>
                                             <td class="py-3 px-4 font-semibold text-gray-200">
@@ -1105,7 +1132,9 @@ fn ArbitrageView(profile_id: Option<i32>) -> impl IntoView {
                                             <td class="py-3 px-4 text-gray-300">{format!("{} Gil", opp.total_cost.separate_with_commas())}</td>
                                             <td class="py-3 px-4 text-gray-300">{opp.gross_profit.separate_with_commas()}</td>
                                             <td class="py-3 px-4 text-emerald-400 font-semibold">{opp.net_profit.separate_with_commas()}</td>
-                                            <td class="py-3 px-4 font-mono">{format!("{:.2}", opp.velocity_score)}</td>
+                                            <td class="py-3 px-4 font-mono" title=velocity_title>
+                                                {format!("{:.2} / {:.1}/day", opp.velocity_score, opp.weekly_avg_velocity)}
+                                            </td>
                                             <td class="py-3 px-4">
                                                 <span class=format!("px-2 py-0.5 rounded text-[10px] font-bold border {}", travel_class)>
                                                     {travel_label}
@@ -1592,7 +1621,10 @@ fn SettingsView(
 
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-gray-400 font-semibold mb-1" title="Minimum profit after estimated travel cost is deducted. Higher values reduce noise but may hide smaller safe flips.">"Min Net Profit (Gil)"</label>
+                            <SettingHelpLabel
+                                label="Min Net Profit (Gil)"
+                                tooltip="Minimum profit after estimated travel cost is deducted. Higher values reduce noise but may hide smaller safe flips."
+                            />
                             <input
                                 type="number"
                                 title="A flip is shown only when net profit is at least this amount."
@@ -1602,7 +1634,10 @@ fn SettingsView(
                             />
                         </div>
                         <div>
-                            <label class="block text-gray-400 font-semibold mb-1" title="Minimum recent sales pressure relative to active destination listings. Higher values favor items that move faster.">"Velocity Threshold"</label>
+                            <SettingHelpLabel
+                                label="Velocity Threshold"
+                                tooltip="Minimum current sales pressure: units sold in the last 48 hours divided by active destination listings. Higher values favor faster-moving items."
+                            />
                             <input
                                 type="number"
                                 step="0.1"
@@ -1613,7 +1648,10 @@ fn SettingsView(
                             />
                         </div>
                         <div>
-                            <label class="block text-gray-400 font-semibold mb-1" title="How much gil one minute of travel/setup time is worth to you. Used to reduce gross profit into net profit.">"Travel Cost Rate (Gil/Min)"</label>
+                            <SettingHelpLabel
+                                label="Travel Cost Rate (Gil/Min)"
+                                tooltip="How much gil one minute of travel or setup time is worth to you. Used to reduce gross profit into net profit."
+                            />
                             <input
                                 type="number"
                                 title="Example: if your time is worth 600,000 gil/hour, use 10,000 gil/min."
@@ -1623,7 +1661,10 @@ fn SettingsView(
                             />
                         </div>
                         <div>
-                            <label class="block text-gray-400 font-semibold mb-1" title="Minimum gross profit before travel cost. This filters tiny spreads early.">"Min Gross Profit (Gil)"</label>
+                            <SettingHelpLabel
+                                label="Min Gross Profit (Gil)"
+                                tooltip="Minimum gross profit before travel cost. This filters tiny spreads early."
+                            />
                             <input
                                 type="number"
                                 title="Gross profit is (sell price - buy price) times quantity before travel cost."
@@ -1633,7 +1674,10 @@ fn SettingsView(
                             />
                         </div>
                         <div>
-                            <label class="block text-gray-400 font-semibold mb-1" title="Controls how far the scanner looks for cheap buy-side listings. Wider scopes can find more profit but increase travel friction.">"Source Scope"</label>
+                            <SettingHelpLabel
+                                label="Source Scope"
+                                tooltip="Controls how far the scanner looks for cheap buy-side listings. Wider scopes can find more profit but increase travel friction."
+                            />
                             <select
                                 title="Same data center is the practical default; same region allows cross-DC buys; home world only is lowest friction."
                                 class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
@@ -1654,7 +1698,10 @@ fn SettingsView(
                                 on:change=move |ev| set_require_home_sell(event_target_checked(&ev))
                             />
                             <span>
-                                <span class="block font-semibold text-gray-300">"Sell only on home world"</span>
+                                <SettingHelpLabel
+                                    label="Sell only on home world"
+                                    tooltip="When enabled, sell-side destination is locked to your profile home world because FFXIV blocks market selling while visiting."
+                                />
                                 <span class="block text-xs text-gray-500">"Keeps arbitrage executable with FFXIV travel restrictions."</span>
                             </span>
                         </label>
@@ -1664,7 +1711,10 @@ fn SettingsView(
                         <h4 class="text-sm font-semibold text-gray-300">"Volatility & Review Gates"</h4>
                         <div class="grid grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-gray-400 font-semibold mb-1" title="Recent-vs-prior price jump ratio that flags a possible regime change. 1.30 means recent sales average is at least 30% above prior sales.">"Max Price Jump Ratio"</label>
+                                <SettingHelpLabel
+                                    label="Max Price Jump Ratio"
+                                    tooltip="Recent-vs-prior price jump ratio that flags a possible regime change. 1.30 means recent sales average is at least 30% above prior sales."
+                                />
                                 <input
                                     type="number"
                                     step="0.01"
@@ -1675,7 +1725,10 @@ fn SettingsView(
                                 />
                             </div>
                             <div>
-                                <label class="block text-gray-400 font-semibold mb-1" title="Minimum recent sales needed before a price jump can be called a confirmed regime change instead of an unconfirmed spike.">"Recent Confirmations"</label>
+                                <SettingHelpLabel
+                                    label="Recent Confirmations"
+                                    tooltip="Minimum recent sales needed before a price jump can be called a confirmed regime change instead of an unconfirmed spike."
+                                />
                                 <input
                                     type="number"
                                     title="Higher values keep more jumps in review until more sales confirm the new price level."
@@ -1685,7 +1738,10 @@ fn SettingsView(
                                 />
                             </div>
                             <div>
-                                <label class="block text-gray-400 font-semibold mb-1" title="What to do when an item has a suspicious recent price jump.">"Volatility Action"</label>
+                                <SettingHelpLabel
+                                    label="Volatility Action"
+                                    tooltip="What to do when an item has a suspicious recent price jump."
+                                />
                                 <select
                                     title="Suppress hides volatile rows; Review keeps them separate; Warn keeps them in the main table with a warning."
                                     class="p-2.5 rounded-lg bg-zinc-950/80 border border-white/10 text-sm focus:outline-none focus:border-violet-500/50 w-full text-gray-200"
@@ -1698,7 +1754,10 @@ fn SettingsView(
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-gray-400 font-semibold mb-1" title="Maximum allowed difference between current low asks and the recent sale cluster. If asks disagree too much, a confirmed jump is downgraded to unconfirmed.">"Max Ask Gap (%)"</label>
+                                <SettingHelpLabel
+                                    label="Max Ask Gap (%)"
+                                    tooltip="Maximum allowed difference between current low asks and the recent sale cluster. If asks disagree too much, a confirmed jump is downgraded to unconfirmed."
+                                />
                                 <input
                                     type="number"
                                     step="0.1"
@@ -1717,7 +1776,10 @@ fn SettingsView(
                                     on:change=move |ev| set_require_ask_confirmation(event_target_checked(&ev))
                                 />
                                 <span>
-                                    <span class="block font-semibold text-gray-300">"Require ask confirmation"</span>
+                                    <SettingHelpLabel
+                                        label="Require ask confirmation"
+                                        tooltip="When enabled, current low asks must support the recent sale cluster before a price jump is considered confirmed."
+                                    />
                                     <span class="block text-xs text-gray-500">"Downgrades jumps when live listings do not corroborate recent sale prices."</span>
                                 </span>
                             </label>

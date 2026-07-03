@@ -404,6 +404,11 @@ impl UltrosDb {
                     gross_profit: Set(opp.gross_profit),
                     net_profit: Set(opp.net_profit),
                     velocity_score: Set(opp.velocity_score),
+                    weekly_avg_velocity: Set(opp.weekly_avg_velocity),
+                    units_sold_48h: Set(opp.units_sold_48h),
+                    units_sold_7d: Set(opp.units_sold_7d),
+                    median_sale_price: Set(opp.median_sale_price),
+                    latest_sale_timestamp: Set(opp.latest_sale_timestamp),
                     listing_age_seconds: Set(opp.listing_age_seconds),
                     total_cost: Set(opp.total_cost),
                     quantity_available: Set(opp.quantity_available),
@@ -430,6 +435,87 @@ impl UltrosDb {
         }
 
         txn.commit().await?;
+        Ok(())
+    }
+
+    pub async fn get_arbitrage_digest_states(
+        &self,
+        profile_id: i32,
+    ) -> Result<Vec<arbitrage_digest_state::Model>> {
+        let states = arbitrage_digest_state::Entity::find()
+            .filter(arbitrage_digest_state::Column::ProfileId.eq(profile_id))
+            .all(&self.db)
+            .await?;
+        Ok(states)
+    }
+
+    pub async fn upsert_arbitrage_digest_states(
+        &self,
+        states: Vec<arbitrage_digest_state::Model>,
+    ) -> Result<()> {
+        if states.is_empty() {
+            return Ok(());
+        }
+
+        let active_models: Vec<arbitrage_digest_state::ActiveModel> = states
+            .into_iter()
+            .map(|state| arbitrage_digest_state::ActiveModel {
+                id: ActiveValue::NotSet,
+                profile_id: Set(state.profile_id),
+                item_id: Set(state.item_id),
+                hq: Set(state.hq),
+                source_world_id: Set(state.source_world_id),
+                dest_world_id: Set(state.dest_world_id),
+                snapshot_hash: Set(state.snapshot_hash),
+                source_price: Set(state.source_price),
+                dest_price: Set(state.dest_price),
+                quantity_available: Set(state.quantity_available),
+                net_profit: Set(state.net_profit),
+                volatility_flag: Set(state.volatility_flag),
+                latest_sale_timestamp: Set(state.latest_sale_timestamp),
+                units_sold_48h: Set(state.units_sold_48h),
+                units_sold_7d: Set(state.units_sold_7d),
+                median_sale_price: Set(state.median_sale_price),
+                recent_cluster_avg_price: Set(state.recent_cluster_avg_price),
+                prior_cluster_avg_price: Set(state.prior_cluster_avg_price),
+                weekly_avg_velocity: Set(state.weekly_avg_velocity),
+                delivered_at: Set(state.delivered_at),
+                created_at: Set(state.created_at),
+                updated_at: Set(state.updated_at),
+            })
+            .collect();
+
+        arbitrage_digest_state::Entity::insert_many(active_models)
+            .on_conflict(
+                sea_orm::sea_query::OnConflict::columns([
+                    arbitrage_digest_state::Column::ProfileId,
+                    arbitrage_digest_state::Column::ItemId,
+                    arbitrage_digest_state::Column::Hq,
+                    arbitrage_digest_state::Column::SourceWorldId,
+                    arbitrage_digest_state::Column::DestWorldId,
+                ])
+                .update_columns([
+                    arbitrage_digest_state::Column::SnapshotHash,
+                    arbitrage_digest_state::Column::SourcePrice,
+                    arbitrage_digest_state::Column::DestPrice,
+                    arbitrage_digest_state::Column::QuantityAvailable,
+                    arbitrage_digest_state::Column::NetProfit,
+                    arbitrage_digest_state::Column::VolatilityFlag,
+                    arbitrage_digest_state::Column::LatestSaleTimestamp,
+                    arbitrage_digest_state::Column::UnitsSold48h,
+                    arbitrage_digest_state::Column::UnitsSold7d,
+                    arbitrage_digest_state::Column::MedianSalePrice,
+                    arbitrage_digest_state::Column::RecentClusterAvgPrice,
+                    arbitrage_digest_state::Column::PriorClusterAvgPrice,
+                    arbitrage_digest_state::Column::WeeklyAvgVelocity,
+                    arbitrage_digest_state::Column::DeliveredAt,
+                    arbitrage_digest_state::Column::UpdatedAt,
+                ])
+                .to_owned(),
+            )
+            .exec(&self.db)
+            .await?;
+
         Ok(())
     }
 }

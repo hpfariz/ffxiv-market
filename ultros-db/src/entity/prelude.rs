@@ -10,6 +10,7 @@ pub use super::alert_list_update::Entity as AlertListUpdate;
 pub use super::alert_notification_rule::Entity as AlertNotificationRule;
 pub use super::alert_price::Entity as AlertPrice;
 pub use super::alert_retainer_undercut::Entity as AlertRetainerUndercut;
+pub use super::arbitrage_digest_state::Entity as ArbitrageDigestState;
 pub use super::arbitrage_opportunity::Entity as ArbitrageOpportunity;
 pub use super::datacenter::Entity as Datacenter;
 pub use super::discord_user::Entity as DiscordUser;
